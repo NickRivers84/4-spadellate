@@ -59,6 +59,10 @@ function prettyErr(e) {
   return [code, msg].filter(Boolean).join(" — ");
 }
 
+function wait(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export default function App() {
   const { play: playSfx } = useSfx();
 
@@ -67,11 +71,12 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
 
-  // diagnostica
+  // diagnostica (senza DevTools)
   const [authDiag, setAuthDiag] = useState({
     origin: "",
-    redirectResult: "",
+    ua: "",
     popupResult: "",
+    redirectResult: "",
     clickError: "",
     note: "",
   });
@@ -165,22 +170,23 @@ export default function App() {
     return collection(db, "users", uid, "history");
   }, [uid]);
 
-  // init diag
+  // diag init
   useEffect(() => {
     setAuthDiag((d) => ({
       ...d,
       origin: window.location.origin,
+      ua: navigator.userAgent,
       note:
-        "Se il login rimbalza: di solito è auth/unauthorized-domain oppure popup bloccato. Qui vedrai il motivo.",
+        "Se rimbalza: guarda Popup result / Redirect result. Se compare auth/unauthorized-domain, stai modificando il client OAuth sbagliato in Google Cloud.",
     }));
   }, []);
 
-  // ensure persistence (anche se già in firebase.js)
+  // persistence (riduce i “rimbalzi”)
   useEffect(() => {
     setPersistence(auth, browserLocalPersistence).catch(() => {});
   }, []);
 
-  // handle redirect result
+  // redirect result handler
   useEffect(() => {
     (async () => {
       try {
@@ -283,7 +289,15 @@ export default function App() {
     }, 500);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [screen, restaurantsCount, playersCount, bonusEnabled, musicEnabled, restaurantNames, playerNames]);
+  }, [
+    screen,
+    restaurantsCount,
+    playersCount,
+    bonusEnabled,
+    musicEnabled,
+    restaurantNames,
+    playerNames,
+  ]);
 
   const resumeMatch = async () => {
     if (!activeMatchRef) return;
@@ -328,27 +342,45 @@ export default function App() {
     });
   };
 
-  // LOGIN: popup first, redirect fallback
+  // ✅ LOGIN robusto: popup con timeout → fallback redirect
   const login = async () => {
     try {
       setAuthBusy(true);
-      setAuthDiag((d) => ({ ...d, clickError: "", popupResult: "" }));
+      setAuthDiag((d) => ({
+        ...d,
+        clickError: "",
+        popupResult: "⏳ Popup in corso…",
+        redirectResult: d.redirectResult, // non resettare
+      }));
 
-      try {
-        const res = await signInWithPopup(auth, provider);
-        if (res?.user) {
-          setAuthDiag((d) => ({ ...d, popupResult: "✅ Popup OK (utente ricevuto)" }));
-        } else {
-          setAuthDiag((d) => ({ ...d, popupResult: "ℹ️ Popup senza utente (raro)" }));
-        }
-      } catch (e) {
-        // se popup bloccato o policy, usiamo redirect
-        setAuthDiag((d) => ({ ...d, popupResult: "❌ " + prettyErr(e) + " → fallback redirect" }));
-        await signInWithRedirect(auth, provider);
-        return; // redirect cambia pagina
+      // tentativo popup con timeout (se resta appeso)
+      const popupPromise = signInWithPopup(auth, provider);
+      const timeoutPromise = (async () => {
+        await wait(4000);
+        throw { code: "popup/timeout", message: "Il popup non ha risposto (timeout 4s)" };
+      })();
+
+      const res = await Promise.race([popupPromise, timeoutPromise]);
+
+      if (res?.user) {
+        setAuthDiag((d) => ({ ...d, popupResult: "✅ Popup OK (utente ricevuto)" }));
+      } else {
+        setAuthDiag((d) => ({ ...d, popupResult: "ℹ️ Popup senza utente (raro)" }));
       }
     } catch (e) {
-      setAuthDiag((d) => ({ ...d, clickError: "❌ " + prettyErr(e) }));
+      // fallback redirect (molto stabile)
+      setAuthDiag((d) => ({
+        ...d,
+        popupResult: "❌ " + prettyErr(e) + " → fallback redirect",
+        redirectResult: "⏳ Avvio redirect…",
+      }));
+
+      try {
+        await signInWithRedirect(auth, provider);
+        return; // cambia pagina
+      } catch (e2) {
+        setAuthDiag((d) => ({ ...d, clickError: "❌ Redirect error: " + prettyErr(e2) }));
+      }
     } finally {
       setAuthBusy(false);
     }
@@ -433,7 +465,7 @@ export default function App() {
         if (cancelled) return;
         setRevealCount(i);
         if (i === 1) setTimeout(() => playSfx("winner.mp3", 0.7), 250);
-        await new Promise((r) => setTimeout(r, i === 1 ? 900 : 650));
+        await wait(i === 1 ? 900 : 650);
       }
     })();
     return () => { cancelled = true; };
@@ -467,6 +499,7 @@ export default function App() {
           </p>
           <div className="tiny" style={{ textAlign: "left" }}>
             <div><strong>Origin:</strong> {authDiag.origin}</div>
+            <div><strong>UserAgent:</strong> {authDiag.ua}</div>
             <div><strong>Popup result:</strong> {authDiag.popupResult}</div>
             <div><strong>Redirect result:</strong> {authDiag.redirectResult}</div>
             <div><strong>Click error:</strong> {authDiag.clickError}</div>
@@ -486,13 +519,24 @@ export default function App() {
         <p className="muted">Ciao {user.displayName}</p>
 
         <div className="stack">
-          <button type="button" onClick={() => setScreen("setup")}>Inizia partita</button>
+          <button type="button" onClick={() => setScreen("setup")}>
+            Inizia partita
+          </button>
+
           {hasCloudSave && (
-            <button type="button" className="secondary" onClick={resumeMatch} disabled={loadingCloud}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={resumeMatch}
+              disabled={loadingCloud}
+            >
               {loadingCloud ? "Carico..." : "Riprendi partita"}
             </button>
           )}
-          <button type="button" className="secondary" onClick={logout}>Esci</button>
+
+          <button type="button" className="secondary" onClick={logout}>
+            Esci
+          </button>
         </div>
 
         {cloudHistory.length > 0 && (
@@ -520,26 +564,44 @@ export default function App() {
         <div className="card">
           <label className="row">
             <span>Ristoranti</span>
-            <select value={restaurantsCount} onChange={(e) => setRestaurantsCount(clamp(Number(e.target.value), 4, 8))}>
-              {[4,5,6,7,8].map((n) => <option key={n} value={n}>{n}</option>)}
+            <select
+              value={restaurantsCount}
+              onChange={(e) => setRestaurantsCount(clamp(Number(e.target.value), 4, 8))}
+            >
+              {[4, 5, 6, 7, 8].map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
             </select>
           </label>
 
           <label className="row">
             <span>Partecipanti</span>
-            <select value={playersCount} onChange={(e) => setPlayersCount(clamp(Number(e.target.value), 4, 8))}>
-              {[4,5,6,7,8].map((n) => <option key={n} value={n}>{n}</option>)}
+            <select
+              value={playersCount}
+              onChange={(e) => setPlayersCount(clamp(Number(e.target.value), 4, 8))}
+            >
+              {[4, 5, 6, 7, 8].map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
             </select>
           </label>
 
           <label className="row">
             <span>Bonus speciale (+5)</span>
-            <input type="checkbox" checked={bonusEnabled} onChange={(e) => setBonusEnabled(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={bonusEnabled}
+              onChange={(e) => setBonusEnabled(e.target.checked)}
+            />
           </label>
 
           <label className="row">
             <span>Musica</span>
-            <input type="checkbox" checked={musicEnabled} onChange={(e) => setMusicEnabled(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={musicEnabled}
+              onChange={(e) => setMusicEnabled(e.target.checked)}
+            />
           </label>
         </div>
 
@@ -547,13 +609,24 @@ export default function App() {
           <div className="card">
             <h3>🍽️ Nomi ristoranti</h3>
             {Array.from({ length: restaurantsCount }).map((_, i) => (
-              <input key={i} value={restaurantNames[i] || ""} onChange={(e) => updateRestaurantName(i, e.target.value)} placeholder={`Ristorante ${i+1}`} />
+              <input
+                key={i}
+                value={restaurantNames[i] || ""}
+                onChange={(e) => updateRestaurantName(i, e.target.value)}
+                placeholder={`Ristorante ${i + 1}`}
+              />
             ))}
           </div>
+
           <div className="card">
             <h3>👥 Nomi partecipanti</h3>
             {Array.from({ length: playersCount }).map((_, i) => (
-              <input key={i} value={playerNames[i] || ""} onChange={(e) => updatePlayerName(i, e.target.value)} placeholder={`Partecipante ${i+1}`} />
+              <input
+                key={i}
+                value={playerNames[i] || ""}
+                onChange={(e) => updatePlayerName(i, e.target.value)}
+                placeholder={`Partecipante ${i + 1}`}
+              />
             ))}
           </div>
         </div>
