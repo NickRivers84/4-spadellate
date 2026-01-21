@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   GoogleAuthProvider,
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   onAuthStateChanged,
   signOut,
+  browserLocalPersistence,
+  setPersistence,
 } from "firebase/auth";
 import {
   collection,
@@ -44,9 +47,7 @@ function useSfx() {
       const a = new Audio(url);
       a.volume = volume;
       await a.play();
-    } catch {
-      // policy / autoplay
-    }
+    } catch {}
   };
   return { play };
 }
@@ -66,17 +67,17 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
 
-  // 🔥 DIAGNOSTICA LOGIN (mostra errori senza DevTools)
+  // diagnostica
   const [authDiag, setAuthDiag] = useState({
     origin: "",
     redirectResult: "",
+    popupResult: "",
     clickError: "",
     note: "",
   });
 
   const provider = useMemo(() => {
     const p = new GoogleAuthProvider();
-    // forziamo la scelta account (utile se hai più account)
     p.setCustomParameters({ prompt: "select_account" });
     return p;
   }, []);
@@ -135,7 +136,7 @@ export default function App() {
   const [revealStarted, setRevealStarted] = useState(false);
   const [revealCount, setRevealCount] = useState(0);
 
-  // derived lists
+  // derived
   const restaurants = useMemo(
     () => restaurantNames.slice(0, restaurantsCount),
     [restaurantNames, restaurantsCount]
@@ -164,27 +165,31 @@ export default function App() {
     return collection(db, "users", uid, "history");
   }, [uid]);
 
-  // 0) salva origin in diagnostica
+  // init diag
   useEffect(() => {
     setAuthDiag((d) => ({
       ...d,
       origin: window.location.origin,
       note:
-        "Se qui appare auth/unauthorized-domain, stai modificando il client OAuth sbagliato (Google Cloud) oppure manca l’origin esatto nel client Web.",
+        "Se il login rimbalza: di solito è auth/unauthorized-domain oppure popup bloccato. Qui vedrai il motivo.",
     }));
   }, []);
 
-  // 1) completa eventuale login redirect
+  // ensure persistence (anche se già in firebase.js)
+  useEffect(() => {
+    setPersistence(auth, browserLocalPersistence).catch(() => {});
+  }, []);
+
+  // handle redirect result
   useEffect(() => {
     (async () => {
       try {
         setAuthBusy(true);
         const res = await getRedirectResult(auth);
-        // res può essere null se non c’è un redirect in corso: non è errore
         if (res?.user) {
           setAuthDiag((d) => ({ ...d, redirectResult: "✅ Redirect OK (utente ricevuto)" }));
         } else {
-          setAuthDiag((d) => ({ ...d, redirectResult: "ℹ️ Nessun redirect result (normale se non stavi loggando)" }));
+          setAuthDiag((d) => ({ ...d, redirectResult: "ℹ️ Nessun redirect result" }));
         }
       } catch (e) {
         setAuthDiag((d) => ({ ...d, redirectResult: "❌ " + prettyErr(e) }));
@@ -194,7 +199,7 @@ export default function App() {
     })();
   }, []);
 
-  // 2) auth listener
+  // auth listener
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u || null);
@@ -203,14 +208,12 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // load cloud state + history on login
+  // load cloud on login
   useEffect(() => {
     if (!uid || !activeMatchRef || !historyColRef) return;
-
     (async () => {
       try {
         setLoadingCloud(true);
-
         const snap = await getDoc(activeMatchRef);
         setHasCloudSave(snap.exists());
 
@@ -218,7 +221,7 @@ export default function App() {
         const hs = await getDocs(qy);
         setCloudHistory(hs.docs.map((d) => ({ id: d.id, ...d.data() })));
       } catch (e) {
-        console.error("Cloud load error:", e);
+        console.error(e);
       } finally {
         setLoadingCloud(false);
       }
@@ -249,7 +252,7 @@ export default function App() {
     });
   };
 
-  // ---------- Firebase actions ----------
+  // storage
   const saveActiveMatch = async (override = {}) => {
     if (!activeMatchRef) return;
     const payload = {
@@ -268,31 +271,19 @@ export default function App() {
     };
     await setDoc(activeMatchRef, payload, { merge: true });
     setHasCloudSave(true);
-
     setSaveToast("✅ Partita salvata");
     setTimeout(() => setSaveToast(""), 1200);
   };
 
-  // autosave in setup (debounce)
   useEffect(() => {
     if (!user || !activeMatchRef) return;
     if (screen !== "setup") return;
-
     const t = setTimeout(() => {
       saveActiveMatch({ screen: "setup" }).catch(() => {});
     }, 500);
-
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    screen,
-    restaurantsCount,
-    playersCount,
-    bonusEnabled,
-    musicEnabled,
-    restaurantNames,
-    playerNames,
-  ]);
+  }, [screen, restaurantsCount, playersCount, bonusEnabled, musicEnabled, restaurantNames, playerNames]);
 
   const resumeMatch = async () => {
     if (!activeMatchRef) return;
@@ -305,29 +296,21 @@ export default function App() {
         return;
       }
       const data = snap.data();
-
       setRestaurantsCount(clamp(Number(data.restaurantsCount ?? 4), 4, 8));
       setPlayersCount(clamp(Number(data.playersCount ?? 4), 4, 8));
       setBonusEnabled(!!data.bonusEnabled);
       setMusicEnabled(!!data.musicEnabled);
-
       setRestaurantNames(data.restaurantNames ?? restaurantNames);
       setPlayerNames(data.playerNames ?? playerNames);
-
       setVoteIndex(Number(data.voteIndex ?? 0));
       setVotes(data.votes ?? []);
-
       const s = data.sliders || {};
       setCibo(Number(s.cibo ?? 7));
       setServizio(Number(s.servizio ?? 7));
       setLocation(Number(s.location ?? 7));
       setConto(Number(s.conto ?? 7));
       setBonusUsed(!!s.bonusUsed);
-
       setScreen("vote");
-    } catch (e) {
-      console.error(e);
-      alert("Errore ripristino partita.");
     } finally {
       setLoadingCloud(false);
     }
@@ -335,37 +318,38 @@ export default function App() {
 
   const saveHistory = async (finalRanking, votesCount) => {
     if (!uid) return;
-    try {
-      const winner = finalRanking?.[0]?.name || "—";
-      const docId = String(Date.now());
-
-      await setDoc(doc(db, "users", uid, "history", docId), {
-        endedAt: serverTimestamp(),
-        winner,
-        ranking: finalRanking,
-        votesCount,
-      });
-
-      const qy = query(
-        collection(db, "users", uid, "history"),
-        orderBy("endedAt", "desc"),
-        limit(10)
-      );
-      const hs = await getDocs(qy);
-      setCloudHistory(hs.docs.map((d) => ({ id: d.id, ...d.data() })));
-    } catch (e) {
-      console.error("History save error:", e);
-    }
+    const winner = finalRanking?.[0]?.name || "—";
+    const docId = String(Date.now());
+    await setDoc(doc(db, "users", uid, "history", docId), {
+      endedAt: serverTimestamp(),
+      winner,
+      ranking: finalRanking,
+      votesCount,
+    });
   };
 
-  // ---------- auth buttons ----------
+  // LOGIN: popup first, redirect fallback
   const login = async () => {
     try {
       setAuthBusy(true);
-      setAuthDiag((d) => ({ ...d, clickError: "" }));
-      await signInWithRedirect(auth, provider);
+      setAuthDiag((d) => ({ ...d, clickError: "", popupResult: "" }));
+
+      try {
+        const res = await signInWithPopup(auth, provider);
+        if (res?.user) {
+          setAuthDiag((d) => ({ ...d, popupResult: "✅ Popup OK (utente ricevuto)" }));
+        } else {
+          setAuthDiag((d) => ({ ...d, popupResult: "ℹ️ Popup senza utente (raro)" }));
+        }
+      } catch (e) {
+        // se popup bloccato o policy, usiamo redirect
+        setAuthDiag((d) => ({ ...d, popupResult: "❌ " + prettyErr(e) + " → fallback redirect" }));
+        await signInWithRedirect(auth, provider);
+        return; // redirect cambia pagina
+      }
     } catch (e) {
       setAuthDiag((d) => ({ ...d, clickError: "❌ " + prettyErr(e) }));
+    } finally {
       setAuthBusy(false);
     }
   };
@@ -375,18 +359,15 @@ export default function App() {
     setScreen("home");
   };
 
-  // ---------- game flow ----------
   const startMatch = () => {
     const rOk = restaurants.every((n) => n && n.trim().length > 0);
     const pOk = players.every((n) => n && n.trim().length > 0);
     if (!rOk) return alert("Inserisci il nome di tutti i ristoranti.");
     if (!pOk) return alert("Inserisci il nome di tutti i partecipanti.");
-
     setVotes([]);
     setVoteIndex(0);
     resetVoteSliders();
     setScreen("vote");
-
     saveActiveMatch({ screen: "vote", voteIndex: 0, votes: [] }).catch(() => {});
   };
 
@@ -401,12 +382,9 @@ export default function App() {
       bonusUsed: bonusEnabled ? bonusUsed : false,
       total: perVoteTotal,
     };
-
     const nextVotes = [...votes, payload];
     setVotes(nextVotes);
-
     const nextIndex = voteIndex + 1;
-
     if (nextIndex >= totalVotesNeeded) {
       setRevealStarted(false);
       setRevealCount(0);
@@ -414,10 +392,8 @@ export default function App() {
       saveActiveMatch({ screen: "ranking", votes: nextVotes, voteIndex: nextIndex }).catch(() => {});
       return;
     }
-
     setVoteIndex(nextIndex);
     resetVoteSliders();
-
     saveActiveMatch({ votes: nextVotes, voteIndex: nextIndex, screen: "vote" }).catch(() => {});
   };
 
@@ -431,17 +407,14 @@ export default function App() {
     saveActiveMatch({ screen: "home" }).catch(() => {});
   };
 
-  // ranking calc
   const ranking = useMemo(() => {
     const sums = Array(restaurantsCount).fill(0);
     for (const v of votes) sums[v.restaurant] += v.total;
-
     return restaurants
       .map((name, idx) => ({ name, score: sums[idx] }))
       .sort((a, b) => b.score - a.score);
   }, [votes, restaurants, restaurantsCount]);
 
-  // save history once when ranking screen is reached
   useEffect(() => {
     if (screen !== "ranking") return;
     if (!uid) return;
@@ -450,38 +423,23 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen]);
 
-  // ranking reveal effect
-  useEffect(() => {
-    if (screen !== "ranking") return;
-    setRevealCount(0);
-  }, [screen]);
-
   useEffect(() => {
     if (screen !== "ranking") return;
     if (!revealStarted) return;
-
     let cancelled = false;
-
     (async () => {
       await playSfx("drumroll.mp3", 0.55);
-
       for (let i = 1; i <= ranking.length; i++) {
         if (cancelled) return;
         setRevealCount(i);
-
         if (i === 1) setTimeout(() => playSfx("winner.mp3", 0.7), 250);
-
         await new Promise((r) => setTimeout(r, i === 1 ? 900 : 650));
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealStarted, screen]);
 
-  // ---------- UI ----------
   if (!authReady) {
     return (
       <div className="screen center">
@@ -491,12 +449,10 @@ export default function App() {
     );
   }
 
-  // NOT LOGGED IN
   if (!user) {
     return (
       <div className="screen center">
         {saveToast && <div className="toast">{saveToast}</div>}
-
         <h1>🍳 4 Spadellate</h1>
         <p className="muted">Il party game da tavolata (stile TV).</p>
 
@@ -504,14 +460,14 @@ export default function App() {
           {authBusy ? "Accesso in corso…" : "Accedi con Google"}
         </button>
 
-        {/* DIAGNOSTICA */}
         <div className="card" style={{ marginTop: 14, maxWidth: 720 }}>
           <h3 style={{ marginTop: 0 }}>🧪 Diagnostica login</h3>
           <p className="tiny muted" style={{ marginTop: 0 }}>
-            Copia queste righe e incollale qui se il login “rimbalza”.
+            Se rimbalza: copia queste righe.
           </p>
           <div className="tiny" style={{ textAlign: "left" }}>
             <div><strong>Origin:</strong> {authDiag.origin}</div>
+            <div><strong>Popup result:</strong> {authDiag.popupResult}</div>
             <div><strong>Redirect result:</strong> {authDiag.redirectResult}</div>
             <div><strong>Click error:</strong> {authDiag.clickError}</div>
             <div className="muted" style={{ marginTop: 8 }}>{authDiag.note}</div>
@@ -526,42 +482,22 @@ export default function App() {
     return (
       <div className="screen center">
         {saveToast && <div className="toast">{saveToast}</div>}
-
         <h1>🍳 4 Spadellate</h1>
         <p className="muted">Ciao {user.displayName}</p>
 
         <div className="stack">
-          <button
-            type="button"
-            onClick={() => {
-              playSfx("tap.mp3", 0.45);
-              setScreen("setup");
-            }}
-          >
-            Inizia partita
-          </button>
-
+          <button type="button" onClick={() => setScreen("setup")}>Inizia partita</button>
           {hasCloudSave && (
-            <button
-              type="button"
-              className="secondary"
-              onClick={resumeMatch}
-              disabled={loadingCloud}
-            >
+            <button type="button" className="secondary" onClick={resumeMatch} disabled={loadingCloud}>
               {loadingCloud ? "Carico..." : "Riprendi partita"}
             </button>
           )}
-
-          <button type="button" className="secondary" onClick={logout}>
-            Esci
-          </button>
+          <button type="button" className="secondary" onClick={logout}>Esci</button>
         </div>
 
         {cloudHistory.length > 0 && (
           <div className="card ranking" style={{ marginTop: 14 }}>
             <h3>📚 Storico vincitori</h3>
-            <p className="tiny muted">Ultime partite salvate sul tuo account.</p>
-
             {cloudHistory.map((h, i) => (
               <div key={h.id} className={`rankRow ${i === 0 ? "winner" : ""}`}>
                 <span className="pos">{i + 1}</span>
@@ -579,90 +515,52 @@ export default function App() {
   if (screen === "setup") {
     return (
       <div className="screen">
-        {saveToast && <div className="toast">{saveToast}</div>}
-
         <h2>Setup partita</h2>
-        <p className="muted">Scegli tutto prima di iniziare (poi si spadella).</p>
 
         <div className="card">
           <label className="row">
             <span>Ristoranti</span>
-            <select
-              value={restaurantsCount}
-              onChange={(e) => setRestaurantsCount(clamp(Number(e.target.value), 4, 8))}
-            >
-              {[4, 5, 6, 7, 8].map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
+            <select value={restaurantsCount} onChange={(e) => setRestaurantsCount(clamp(Number(e.target.value), 4, 8))}>
+              {[4,5,6,7,8].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </label>
 
           <label className="row">
             <span>Partecipanti</span>
-            <select
-              value={playersCount}
-              onChange={(e) => setPlayersCount(clamp(Number(e.target.value), 4, 8))}
-            >
-              {[4, 5, 6, 7, 8].map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
+            <select value={playersCount} onChange={(e) => setPlayersCount(clamp(Number(e.target.value), 4, 8))}>
+              {[4,5,6,7,8].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </label>
 
           <label className="row">
             <span>Bonus speciale (+5)</span>
-            <input
-              type="checkbox"
-              checked={bonusEnabled}
-              onChange={(e) => setBonusEnabled(e.target.checked)}
-            />
+            <input type="checkbox" checked={bonusEnabled} onChange={(e) => setBonusEnabled(e.target.checked)} />
           </label>
 
           <label className="row">
             <span>Musica</span>
-            <input
-              type="checkbox"
-              checked={musicEnabled}
-              onChange={(e) => setMusicEnabled(e.target.checked)}
-            />
+            <input type="checkbox" checked={musicEnabled} onChange={(e) => setMusicEnabled(e.target.checked)} />
           </label>
         </div>
 
         <div className="grid2">
           <div className="card">
             <h3>🍽️ Nomi ristoranti</h3>
-            <p className="tiny muted">Inserisci {restaurantsCount} nomi.</p>
             {Array.from({ length: restaurantsCount }).map((_, i) => (
-              <input
-                key={i}
-                value={restaurantNames[i] || ""}
-                onChange={(e) => updateRestaurantName(i, e.target.value)}
-                placeholder={`Ristorante ${i + 1}`}
-              />
+              <input key={i} value={restaurantNames[i] || ""} onChange={(e) => updateRestaurantName(i, e.target.value)} placeholder={`Ristorante ${i+1}`} />
             ))}
           </div>
-
           <div className="card">
             <h3>👥 Nomi partecipanti</h3>
-            <p className="tiny muted">Inserisci {playersCount} nomi.</p>
             {Array.from({ length: playersCount }).map((_, i) => (
-              <input
-                key={i}
-                value={playerNames[i] || ""}
-                onChange={(e) => updatePlayerName(i, e.target.value)}
-                placeholder={`Partecipante ${i + 1}`}
-              />
+              <input key={i} value={playerNames[i] || ""} onChange={(e) => updatePlayerName(i, e.target.value)} placeholder={`Partecipante ${i+1}`} />
             ))}
           </div>
         </div>
 
         <div className="stack">
-          <button type="button" onClick={startMatch}>
-            Avvia la cena 🍷
-          </button>
-          <button type="button" className="secondary" onClick={() => setScreen("home")}>
-            Indietro
-          </button>
+          <button type="button" onClick={startMatch}>Avvia la cena 🍷</button>
+          <button type="button" className="secondary" onClick={() => setScreen("home")}>Indietro</button>
         </div>
       </div>
     );
@@ -672,39 +570,11 @@ export default function App() {
   if (screen === "vote") {
     return (
       <div className="screen">
-        {saveToast && <div className="toast">{saveToast}</div>}
-
-        <div className="topbar">
-          <div>
-            <h2>Votazione</h2>
-            <p className="tiny muted">
-              Voto {voteIndex + 1} / {totalVotesNeeded}
-            </p>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, width: "min(520px, 100%)" }}>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => {
-                saveActiveMatch({ screen: "vote" }).catch(() => {});
-                setScreen("home");
-              }}
-            >
-              Salva e torna Home
-            </button>
-
-            <button type="button" className="secondary" onClick={restart}>
-              Abbandona
-            </button>
-          </div>
-        </div>
+        <h2>Votazione</h2>
+        <p className="tiny muted">Voto {voteIndex + 1} / {totalVotesNeeded}</p>
 
         <div className="card">
-          <h3>
-            👤 {players[currentPlayer]} vota → 🍽️ {restaurants[currentRestaurant]}
-          </h3>
-          <p className="tiny muted">Tutti votano tutti. Uno alla volta.</p>
+          <h3>👤 {players[currentPlayer]} vota → 🍽️ {restaurants[currentRestaurant]}</h3>
         </div>
 
         <div className="card">
@@ -727,6 +597,7 @@ export default function App() {
 
           <button type="button" onClick={submitVote}>Conferma voto</button>
           <button type="button" className="secondary" onClick={resetVoteSliders}>Reset voto</button>
+          <button type="button" className="secondary" onClick={() => setScreen("home")}>Home</button>
         </div>
       </div>
     );
@@ -736,59 +607,33 @@ export default function App() {
   if (screen === "ranking") {
     const visibleRows = ranking.slice(0, revealCount);
     const winner = ranking?.[0]?.name || "—";
-
     return (
       <div className="screen center rankingStage">
-        {saveToast && <div className="toast">{saveToast}</div>}
-
-        <div className="stageHeader">
-          <h1 className="stageTitle">🏆 Classifica finale</h1>
-          <p className="muted">Modalità studio TV: reveal a effetto.</p>
-        </div>
+        <h1 className="stageTitle">🏆 Classifica finale</h1>
 
         {!revealStarted ? (
           <div className="card stageCard">
-            <p className="muted" style={{ marginTop: 0 }}>Pronti? Silenzio in sala.</p>
             <button type="button" onClick={() => { setRevealStarted(true); setRevealCount(0); }}>
               Mostra classifica 🎬
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => { setRevealStarted(true); setRevealCount(ranking.length); }}
-            >
-              Salta reveal (mostra tutto)
             </button>
           </div>
         ) : (
           <>
             <div className="card ranking rankingReveal">
               {visibleRows.map((r, i) => (
-                <div
-                  key={r.name}
-                  className={`rankRow revealRow ${i === 0 ? "winner" : ""}`}
-                  style={{ animationDelay: `${i * 90}ms` }}
-                >
+                <div key={r.name} className={`rankRow revealRow ${i === 0 ? "winner" : ""}`}>
                   <span className="pos">{i + 1}</span>
                   <span className="name">{r.name}</span>
                   <span className="score">{r.score}</span>
                 </div>
               ))}
-
               {revealCount >= ranking.length && (
                 <div className="winnerBanner">
-                  <div className="winnerGlow" />
-                  <div className="winnerText">
-                    Vincitore: <strong>{winner}</strong>
-                  </div>
-                  <div className="winnerSub">“Qui si spadella sul serio.”</div>
+                  <div className="winnerText">Vincitore: <strong>{winner}</strong></div>
                 </div>
               )}
             </div>
-
-            <div className="stack">
-              <button type="button" onClick={restart}>Nuova partita</button>
-            </div>
+            <button type="button" onClick={restart}>Nuova partita</button>
           </>
         )}
       </div>
