@@ -1,17 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import "./App.css";
-
-import { auth, db } from "./firebase.js";
 import {
   GoogleAuthProvider,
-  onAuthStateChanged,
   signInWithRedirect,
   getRedirectResult,
+  onAuthStateChanged,
   signOut,
 } from "firebase/auth";
 import {
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -21,766 +17,813 @@ import {
   serverTimestamp,
   setDoc,
 } from "firebase/firestore";
+import { auth, db } from "./firebase";
+import "./App.css";
 
-const provider = new GoogleAuthProvider();
+const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 
-// storage keys
-const LOCAL_ACTIVE_KEY = "4spadellate_active_backup_v1";
-
-// firestore paths
-const activeDoc = (uid) => doc(db, "users", uid);
-const matchDoc = (uid, matchId) => doc(db, "matches", uid, "items", matchId);
-const historyCol = (uid) => collection(db, "history", uid, "items");
-
-// ------- Audio helpers (non si rompono se i file non esistono) -------
-async function urlExists(url) {
+async function audioExists(url) {
   try {
-    const res = await fetch(url, { method: "HEAD" });
+    const res = await fetch(url, { method: "HEAD", cache: "no-store" });
     return res.ok;
   } catch {
     return false;
   }
 }
-async function safePlay(url, { loop = false, volume = 0.5 } = {}) {
-  if (!(await urlExists(url))) return null;
-  const a = new Audio(url);
-  a.loop = loop;
-  a.volume = volume;
-  try {
-    await a.play();
-    return a;
-  } catch {
-    return null;
-  }
-}
-async function playFX(name, volume = 0.55) {
-  await safePlay(`/audio/${name}`, { loop: false, volume });
-}
 
-function newMatchId() {
-  return "SPAD-" + Math.random().toString(36).slice(2, 8).toUpperCase();
+function useSfx() {
+  const cacheRef = useRef(new Map());
+
+  const play = async (file, volume = 0.7) => {
+    const url = `/audio/${file}`;
+    if (!cacheRef.current.has(url)) {
+      const ok = await audioExists(url);
+      cacheRef.current.set(url, ok);
+    }
+    if (!cacheRef.current.get(url)) return;
+
+    try {
+      const a = new Audio(url);
+      a.volume = volume;
+      await a.play();
+    } catch {
+      // ignore (autoplay/policy)
+    }
+  };
+
+  return { play };
 }
 
 export default function App() {
-  const [user, setUser] = useState(null);
-  const [screen, setScreen] = useState("loading"); // loading | login | home | setup | vote | ranking | history
-  const [cloudStatus, setCloudStatus] = useState("ok"); // ok | offline
-
-  // active match
-  const [activeId, setActiveId] = useState(null);
-  const [match, setMatch] = useState(null);
-  const [loadingActive, setLoadingActive] = useState(false);
-
-  // history
-  const [history, setHistory] = useState([]);
-  const [loadingHistory, setLoadingHistory] = useState(false);
-
-  // music
-  const bgRef = useRef(null);
-  const [musicOn, setMusicOn] = useState(false);
+  const { play: playSfx } = useSfx();
 
   // auth
-  useEffect(() => {
-    getRedirectResult(auth).catch(() => {});
-    return onAuthStateChanged(auth, async (u) => {
-      if (!u) {
-        setUser(null);
-        setActiveId(null);
-        setMatch(null);
-        setHistory([]);
-        setScreen("login");
-        return;
-      }
-      setUser(u);
-      setScreen("home");
-      await loadActive(u.uid);
-      await loadHistory(u.uid);
-    });
+  const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authBusy, setAuthBusy] = useState(false);
+
+  const provider = useMemo(() => {
+    const p = new GoogleAuthProvider();
+    // opzionale: forzare sempre scelta account
+    p.setCustomParameters({ prompt: "select_account" });
+    return p;
   }, []);
 
-  // music start/stop
+  // navigation
+  const [screen, setScreen] = useState("home"); // home | setup | vote | ranking
+  const [loadingCloud, setLoadingCloud] = useState(false);
+
+  // toast
+  const [saveToast, setSaveToast] = useState("");
+
+  // setup
+  const [restaurantsCount, setRestaurantsCount] = useState(4);
+  const [playersCount, setPlayersCount] = useState(4);
+  const [bonusEnabled, setBonusEnabled] = useState(true);
+  const [musicEnabled, setMusicEnabled] = useState(false);
+
+  const [restaurantNames, setRestaurantNames] = useState([
+    "La Bottega",
+    "Trattoria Roma",
+    "Osteria Bella",
+    "Spadella d'Oro",
+    "La Brace",
+    "Il Tegame",
+    "Forchetta & Co",
+    "Sugo Supremo",
+  ]);
+
+  const [playerNames, setPlayerNames] = useState([
+    "Giocatore 1",
+    "Giocatore 2",
+    "Giocatore 3",
+    "Giocatore 4",
+    "Giocatore 5",
+    "Giocatore 6",
+    "Giocatore 7",
+    "Giocatore 8",
+  ]);
+
+  // match
+  const [voteIndex, setVoteIndex] = useState(0);
+  const [votes, setVotes] = useState([]);
+
+  // vote sliders
+  const [cibo, setCibo] = useState(7);
+  const [servizio, setServizio] = useState(7);
+  const [location, setLocation] = useState(7);
+  const [conto, setConto] = useState(7);
+  const [bonusUsed, setBonusUsed] = useState(false);
+
+  // cloud: resume + history
+  const [hasCloudSave, setHasCloudSave] = useState(false);
+  const [cloudHistory, setCloudHistory] = useState([]);
+
+  // ranking reveal state
+  const [revealStarted, setRevealStarted] = useState(false);
+  const [revealCount, setRevealCount] = useState(0);
+
+  // derived lists
+  const restaurants = useMemo(
+    () => restaurantNames.slice(0, restaurantsCount),
+    [restaurantNames, restaurantsCount]
+  );
+  const players = useMemo(
+    () => playerNames.slice(0, playersCount),
+    [playerNames, playersCount]
+  );
+
+  const totalVotesNeeded = playersCount * restaurantsCount;
+  const currentPlayer = Math.floor(voteIndex / restaurantsCount);
+  const currentRestaurant = voteIndex % restaurantsCount;
+
+  const perVoteBase = cibo + servizio + location + conto;
+  const perVoteTotal = perVoteBase + (bonusEnabled && bonusUsed ? 5 : 0);
+
+  const uid = user?.uid || null;
+
+  const activeMatchRef = useMemo(() => {
+    if (!uid) return null;
+    return doc(db, "users", uid, "state", "activeMatch");
+  }, [uid]);
+
+  const historyColRef = useMemo(() => {
+    if (!uid) return null;
+    return collection(db, "users", uid, "history");
+  }, [uid]);
+
+  // 1) completa eventuale login redirect (IMPORTANTISSIMO)
   useEffect(() => {
-    let cancelled = false;
     (async () => {
-      if (!musicOn) {
-        if (bgRef.current) {
-          bgRef.current.pause();
-          bgRef.current = null;
-        }
-        return;
-      }
-      if (!bgRef.current) {
-        const a = await safePlay("/audio/background.mp3", {
-          loop: true,
-          volume: 0.35,
-        });
-        if (cancelled) return;
-        bgRef.current = a;
-      } else {
-        bgRef.current.play().catch(() => {});
+      try {
+        setAuthBusy(true);
+        await getRedirectResult(auth);
+      } catch (e) {
+        console.error("getRedirectResult error:", e);
+      } finally {
+        setAuthBusy(false);
       }
     })();
+  }, []);
+
+  // 2) auth listener
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u || null);
+      setAuthReady(true);
+    });
+    return () => unsub();
+  }, []);
+
+  // load cloud state + history on login
+  useEffect(() => {
+    if (!uid || !activeMatchRef || !historyColRef) return;
+
+    (async () => {
+      try {
+        setLoadingCloud(true);
+
+        const snap = await getDoc(activeMatchRef);
+        setHasCloudSave(snap.exists());
+
+        const qy = query(historyColRef, orderBy("endedAt", "desc"), limit(10));
+        const hs = await getDocs(qy);
+        setCloudHistory(hs.docs.map((d) => ({ id: d.id, ...d.data() })));
+      } catch (e) {
+        console.error("Cloud load error:", e);
+      } finally {
+        setLoadingCloud(false);
+      }
+    })();
+  }, [uid, activeMatchRef, historyColRef]);
+
+  const resetVoteSliders = () => {
+    setCibo(7);
+    setServizio(7);
+    setLocation(7);
+    setConto(7);
+    setBonusUsed(false);
+  };
+
+  const updateRestaurantName = (i, value) => {
+    setRestaurantNames((prev) => {
+      const next = [...prev];
+      next[i] = value;
+      return next;
+    });
+  };
+
+  const updatePlayerName = (i, value) => {
+    setPlayerNames((prev) => {
+      const next = [...prev];
+      next[i] = value;
+      return next;
+    });
+  };
+
+  // ---------- Firebase actions ----------
+  const saveActiveMatch = async (override = {}) => {
+    if (!activeMatchRef) return;
+    const payload = {
+      restaurantsCount,
+      playersCount,
+      bonusEnabled,
+      musicEnabled,
+      restaurantNames,
+      playerNames,
+      voteIndex,
+      votes,
+      sliders: { cibo, servizio, location, conto, bonusUsed },
+      screen,
+      updatedAt: serverTimestamp(),
+      ...override,
+    };
+    await setDoc(activeMatchRef, payload, { merge: true });
+    setHasCloudSave(true);
+
+    setSaveToast("✅ Partita salvata");
+    setTimeout(() => setSaveToast(""), 1200);
+  };
+
+  // autosave in setup (debounce)
+  useEffect(() => {
+    if (!user || !activeMatchRef) return;
+    if (screen !== "setup") return;
+
+    const t = setTimeout(() => {
+      saveActiveMatch({ screen: "setup" }).catch(() => {});
+    }, 500);
+
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    screen,
+    restaurantsCount,
+    playersCount,
+    bonusEnabled,
+    musicEnabled,
+    restaurantNames,
+    playerNames,
+  ]);
+
+  const resumeMatch = async () => {
+    if (!activeMatchRef) return;
+    try {
+      setLoadingCloud(true);
+      const snap = await getDoc(activeMatchRef);
+      if (!snap.exists()) {
+        alert("Nessuna partita salvata trovata.");
+        setHasCloudSave(false);
+        return;
+      }
+      const data = snap.data();
+
+      setRestaurantsCount(clamp(Number(data.restaurantsCount ?? 4), 4, 8));
+      setPlayersCount(clamp(Number(data.playersCount ?? 4), 4, 8));
+      setBonusEnabled(!!data.bonusEnabled);
+      setMusicEnabled(!!data.musicEnabled);
+
+      setRestaurantNames(data.restaurantNames ?? restaurantNames);
+      setPlayerNames(data.playerNames ?? playerNames);
+
+      setVoteIndex(Number(data.voteIndex ?? 0));
+      setVotes(data.votes ?? []);
+
+      const s = data.sliders || {};
+      setCibo(Number(s.cibo ?? 7));
+      setServizio(Number(s.servizio ?? 7));
+      setLocation(Number(s.location ?? 7));
+      setConto(Number(s.conto ?? 7));
+      setBonusUsed(!!s.bonusUsed);
+
+      setScreen("vote");
+    } catch (e) {
+      console.error(e);
+      alert("Errore ripristino partita (vedi console).");
+    } finally {
+      setLoadingCloud(false);
+    }
+  };
+
+  const saveHistory = async (finalRanking, votesCount) => {
+    if (!uid) return;
+    try {
+      const winner = finalRanking?.[0]?.name || "—";
+      const docId = String(Date.now());
+
+      await setDoc(doc(db, "users", uid, "history", docId), {
+        endedAt: serverTimestamp(),
+        winner,
+        ranking: finalRanking,
+        votesCount,
+      });
+
+      const qy = query(
+        collection(db, "users", uid, "history"),
+        orderBy("endedAt", "desc"),
+        limit(10)
+      );
+      const hs = await getDocs(qy);
+      setCloudHistory(hs.docs.map((d) => ({ id: d.id, ...d.data() })));
+    } catch (e) {
+      console.error("History save error:", e);
+    }
+  };
+
+  // ---------- auth buttons ----------
+  const login = async () => {
+    try {
+      setAuthBusy(true);
+      await signInWithRedirect(auth, provider);
+    } catch (e) {
+      console.error(e);
+      alert("Login fallito. Controlla console.");
+      setAuthBusy(false);
+    }
+  };
+
+  const logout = async () => {
+    await signOut(auth);
+    setScreen("home");
+  };
+
+  // ---------- game flow ----------
+  const startMatch = () => {
+    const rOk = restaurants.every((n) => n && n.trim().length > 0);
+    const pOk = players.every((n) => n && n.trim().length > 0);
+    if (!rOk) return alert("Inserisci il nome di tutti i ristoranti.");
+    if (!pOk) return alert("Inserisci il nome di tutti i partecipanti.");
+
+    setVotes([]);
+    setVoteIndex(0);
+    resetVoteSliders();
+    setScreen("vote");
+
+    saveActiveMatch({ screen: "vote", voteIndex: 0, votes: [] }).catch(
+      console.error
+    );
+  };
+
+  const submitVote = () => {
+    const payload = {
+      player: currentPlayer,
+      restaurant: currentRestaurant,
+      cibo,
+      servizio,
+      location,
+      conto,
+      bonusUsed: bonusEnabled ? bonusUsed : false,
+      total: perVoteTotal,
+    };
+
+    const nextVotes = [...votes, payload];
+    setVotes(nextVotes);
+
+    const nextIndex = voteIndex + 1;
+
+    if (nextIndex >= totalVotesNeeded) {
+      setRevealStarted(false);
+      setRevealCount(0);
+      setScreen("ranking");
+
+      saveActiveMatch({
+        screen: "ranking",
+        votes: nextVotes,
+        voteIndex: nextIndex,
+      }).catch(console.error);
+      return;
+    }
+
+    setVoteIndex(nextIndex);
+    resetVoteSliders();
+
+    saveActiveMatch({
+      votes: nextVotes,
+      voteIndex: nextIndex,
+      screen: "vote",
+    }).catch(console.error);
+  };
+
+  const restart = () => {
+    setScreen("home");
+    setVotes([]);
+    setVoteIndex(0);
+    resetVoteSliders();
+    setRevealStarted(false);
+    setRevealCount(0);
+    saveActiveMatch({ screen: "home" }).catch(() => {});
+  };
+
+  // ranking calc
+  const ranking = useMemo(() => {
+    const sums = Array(restaurantsCount).fill(0);
+    for (const v of votes) sums[v.restaurant] += v.total;
+
+    return restaurants
+      .map((name, idx) => ({ name, score: sums[idx] }))
+      .sort((a, b) => b.score - a.score);
+  }, [votes, restaurants, restaurantsCount]);
+
+  // save history once when ranking screen is reached
+  useEffect(() => {
+    if (screen !== "ranking") return;
+    if (!uid) return;
+    if (votes.length === 0) return;
+
+    saveHistory(ranking, votes.length).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screen]);
+
+  // ranking reveal effect
+  useEffect(() => {
+    if (screen !== "ranking") return;
+    setRevealCount(0);
+  }, [screen]);
+
+  useEffect(() => {
+    if (screen !== "ranking") return;
+    if (!revealStarted) return;
+
+    let cancelled = false;
+
+    (async () => {
+      await playSfx("drumroll.mp3", 0.55);
+
+      for (let i = 1; i <= ranking.length; i++) {
+        if (cancelled) return;
+        setRevealCount(i);
+
+        if (i === 1) {
+          setTimeout(() => {
+            playSfx("winner.mp3", 0.7);
+          }, 250);
+        }
+
+        await new Promise((r) => setTimeout(r, i === 1 ? 900 : 650));
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
-  }, [musicOn]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealStarted, screen]);
 
-  // ---------- Cloud helpers ----------
-  async function loadActive(uid = user?.uid) {
-    if (!uid) return;
-    setLoadingActive(true);
-    try {
-      const snap = await getDoc(activeDoc(uid));
-      if (snap.exists() && snap.data()?.activeMatchId) {
-        const id = snap.data().activeMatchId;
-        setActiveId(id);
-        const msnap = await getDoc(matchDoc(uid, id));
-        setMatch(msnap.exists() ? msnap.data() : null);
-      } else {
-        setActiveId(null);
-        setMatch(null);
-      }
-      setCloudStatus("ok");
-    } catch {
-      setCloudStatus("offline");
-      // fallback locale
-      const local = localStorage.getItem(LOCAL_ACTIVE_KEY);
-      if (local) {
-        const parsed = JSON.parse(local);
-        setActiveId(parsed?.id || null);
-        setMatch(parsed || null);
-      } else {
-        setActiveId(null);
-        setMatch(null);
-      }
-    } finally {
-      setLoadingActive(false);
-    }
-  }
-
-  async function saveActive(uid, data) {
-    // backup locale always
-    localStorage.setItem(LOCAL_ACTIVE_KEY, JSON.stringify(data));
-
-    try {
-      await setDoc(matchDoc(uid, data.id), { ...data, updatedAt: serverTimestamp() }, { merge: true });
-      await setDoc(activeDoc(uid), { activeMatchId: data.id, updatedAt: serverTimestamp() }, { merge: true });
-      setCloudStatus("ok");
-    } catch {
-      setCloudStatus("offline");
-    }
-  }
-
-  async function clearActive(uid = user?.uid) {
-    localStorage.removeItem(LOCAL_ACTIVE_KEY);
-    setActiveId(null);
-    setMatch(null);
-
-    if (!uid) return;
-    try {
-      // solo “stacca” l’attiva; il documento partita resta (storico/recupero)
-      await setDoc(activeDoc(uid), { activeMatchId: null, updatedAt: serverTimestamp() }, { merge: true });
-      setCloudStatus("ok");
-    } catch {
-      setCloudStatus("offline");
-    }
-  }
-
-  async function loadHistory(uid = user?.uid) {
-    if (!uid) return;
-    setLoadingHistory(true);
-    try {
-      const q = query(historyCol(uid), orderBy("endedAt", "desc"), limit(20));
-      const snaps = await getDocs(q);
-      setHistory(snaps.docs.map((d) => ({ id: d.id, ...d.data() })));
-      setCloudStatus("ok");
-    } catch {
-      // storico non critico se offline
-      setCloudStatus("offline");
-    } finally {
-      setLoadingHistory(false);
-    }
-  }
-
-  async function pushHistory(uid, finishedMatch, ranking) {
-    // salva solo un riassunto “da party”
-    const winner = ranking[0]?.name || "—";
-    const payload = {
-      matchId: finishedMatch.id,
-      winner,
-      ranking,
-      players: finishedMatch.settings.players,
-      restaurants: finishedMatch.settings.restaurants,
-      endedAt: serverTimestamp(),
-    };
-
-    try {
-      const id = `${Date.now()}_${finishedMatch.id}`;
-      await setDoc(doc(historyCol(uid), id), payload, { merge: true });
-      setCloudStatus("ok");
-    } catch {
-      setCloudStatus("offline");
-    }
-  }
-
-  // ---------- Screens ----------
-  if (screen === "loading") {
+  // ---------- UI ----------
+  if (!authReady) {
     return (
       <div className="screen center">
         <h1>🍳 4 Spadellate</h1>
-        <p className="subtitle">Carico la tavolata…</p>
+        <p className="muted">Caricamento…</p>
       </div>
     );
   }
 
-  if (screen === "login") {
+  if (!user) {
     return (
       <div className="screen center">
+        {saveToast && <div className="toast">{saveToast}</div>}
+
         <h1>🍳 4 Spadellate</h1>
-        <p className="subtitle">Accedi per salvare partite anche per mesi.</p>
-        <button onClick={() => signInWithRedirect(auth, provider)}>
-          Accedi con Google
+        <p className="muted">Il party game da tavolata (stile TV).</p>
+
+        <button type="button" onClick={login} disabled={authBusy}>
+          {authBusy ? "Accesso in corso…" : "Accedi con Google"}
         </button>
+
+        <p className="tiny muted" style={{ marginTop: 10 }}>
+          Se hai popup bloccati o PWA, il login avviene via reindirizzamento (più stabile).
+        </p>
       </div>
     );
   }
 
   if (screen === "home") {
-    const hasOngoing = !!match?.settings && match?.finished === false;
-
     return (
       <div className="screen center">
-        <div className="topbar">
-          <div>
-            <h2 style={{ margin: 0 }}>
-              Ciao {user?.displayName?.split(" ")[0] || "Chef"} 👋
-            </h2>
-            <p className="subtitle" style={{ marginTop: 6 }}>
-              {cloudStatus === "offline"
-                ? "⚠️ Cloud non raggiungibile: salvo localmente e sincronizzo appena torna."
-                : "Stasera si giudica come in TV. Ma siete voi la giuria."}
-            </p>
-          </div>
-          <button className="ghost" onClick={() => signOut(auth)}>
+        {saveToast && <div className="toast">{saveToast}</div>}
+
+        <h1>🍳 4 Spadellate</h1>
+        <p className="muted">Ciao {user.displayName}</p>
+
+        <div className="stack">
+          <button
+            type="button"
+            onClick={() => {
+              playSfx("tap.mp3", 0.45);
+              setScreen("setup");
+            }}
+          >
+            Inizia partita
+          </button>
+
+          {hasCloudSave && (
+            <button
+              type="button"
+              className="secondary"
+              onClick={resumeMatch}
+              disabled={loadingCloud}
+            >
+              {loadingCloud ? "Carico..." : "Riprendi partita"}
+            </button>
+          )}
+
+          <button type="button" className="secondary" onClick={logout}>
             Esci
           </button>
         </div>
 
+        {cloudHistory.length > 0 && (
+          <div className="card ranking" style={{ marginTop: 14 }}>
+            <h3>📚 Storico vincitori</h3>
+            <p className="tiny muted">Ultime partite salvate sul tuo account.</p>
+
+            {cloudHistory.map((h, i) => (
+              <div key={h.id} className={`rankRow ${i === 0 ? "winner" : ""}`}>
+                <span className="pos">{i + 1}</span>
+                <span className="name">{h.winner || "—"}</span>
+                <span className="score">{h.votesCount || 0} voti</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (screen === "setup") {
+    return (
+      <div className="screen">
+        {saveToast && <div className="toast">{saveToast}</div>}
+
+        <h2>Setup partita</h2>
+        <p className="muted">Scegli tutto prima di iniziare (poi si spadella).</p>
+
         <div className="card">
-          <div className="toggles">
-            <label className="toggle">
+          <label className="row">
+            <span>Ristoranti</span>
+            <select
+              value={restaurantsCount}
+              onChange={(e) =>
+                setRestaurantsCount(clamp(Number(e.target.value), 4, 8))
+              }
+            >
+              {[4, 5, 6, 7, 8].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="row">
+            <span>Partecipanti</span>
+            <select
+              value={playersCount}
+              onChange={(e) =>
+                setPlayersCount(clamp(Number(e.target.value), 4, 8))
+              }
+            >
+              {[4, 5, 6, 7, 8].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="row">
+            <span>Bonus speciale (+5)</span>
+            <input
+              type="checkbox"
+              checked={bonusEnabled}
+              onChange={(e) => setBonusEnabled(e.target.checked)}
+            />
+          </label>
+
+          <label className="row">
+            <span>Musica</span>
+            <input
+              type="checkbox"
+              checked={musicEnabled}
+              onChange={(e) => setMusicEnabled(e.target.checked)}
+            />
+          </label>
+
+          <p className="tiny muted">
+            (Audio reveal classifica: metti drumroll.mp3 + winner.mp3 in /public/audio)
+          </p>
+        </div>
+
+        <div className="grid2">
+          <div className="card">
+            <h3>🍽️ Nomi ristoranti</h3>
+            <p className="tiny muted">Inserisci {restaurantsCount} nomi.</p>
+            {Array.from({ length: restaurantsCount }).map((_, i) => (
               <input
-                type="checkbox"
-                checked={musicOn}
-                onChange={async (e) => {
-                  setMusicOn(e.target.checked);
-                  await playFX("tap.mp3", 0.35);
-                }}
+                key={i}
+                value={restaurantNames[i] || ""}
+                onChange={(e) => updateRestaurantName(i, e.target.value)}
+                placeholder={`Ristorante ${i + 1}`}
               />
-              Musica (se presente)
-            </label>
+            ))}
+          </div>
+
+          <div className="card">
+            <h3>👥 Nomi partecipanti</h3>
+            <p className="tiny muted">Inserisci {playersCount} nomi.</p>
+            {Array.from({ length: playersCount }).map((_, i) => (
+              <input
+                key={i}
+                value={playerNames[i] || ""}
+                onChange={(e) => updatePlayerName(i, e.target.value)}
+                placeholder={`Partecipante ${i + 1}`}
+              />
+            ))}
           </div>
         </div>
 
-        {loadingActive ? (
-          <p className="subtitle">Controllo se c’è una partita in corso…</p>
-        ) : (
-          <>
-            {hasOngoing ? (
-              <>
-                <button
-                  onClick={async () => {
-                    await playFX("confirm.mp3", 0.45);
-                    setMusicOn(!!match?.settings?.music);
-                    setScreen("vote");
-                  }}
-                >
-                  Riprendi partita
-                </button>
-                <button
-                  className="ghost"
-                  onClick={async () => {
-                    await playFX("tap.mp3", 0.35);
-                    await clearActive();
-                    setScreen("setup");
-                  }}
-                >
-                  Nuova partita (azzera)
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={async () => {
-                  await playFX("confirm.mp3", 0.45);
-                  setScreen("setup");
-                }}
-              >
-                Inizia partita
-              </button>
-            )}
+        <div className="stack">
+          <button type="button" onClick={startMatch}>
+            Avvia la cena 🍷
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setScreen("home")}
+          >
+            Indietro
+          </button>
+        </div>
+      </div>
+    );
+  }
 
+  if (screen === "vote") {
+    return (
+      <div className="screen">
+        {saveToast && <div className="toast">{saveToast}</div>}
+
+        <div className="topbar">
+          <div>
+            <h2>Votazione</h2>
+            <p className="tiny muted">
+              Voto {voteIndex + 1} / {totalVotesNeeded}
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, width: "min(520px, 100%)" }}>
             <button
-              className="ghost"
-              onClick={async () => {
-                await playFX("tap.mp3", 0.35);
-                setScreen("history");
+              type="button"
+              className="secondary"
+              onClick={() => {
+                saveActiveMatch({ screen: "vote" }).catch(() => {});
+                setScreen("home");
               }}
             >
-              Storico vincitori
+              Salva e torna Home
             </button>
 
-            {(loadingHistory && <p className="subtitle">Carico storico…</p>) ||
-              (history.length === 0 && (
-                <p className="subtitle">Nessuna partita conclusa ancora. Si comincia!</p>
+            <button type="button" className="secondary" onClick={restart}>
+              Abbandona
+            </button>
+          </div>
+        </div>
+
+        <div className="card">
+          <h3>
+            👤 {players[currentPlayer]} vota → 🍽️ {restaurants[currentRestaurant]}
+          </h3>
+          <p className="tiny muted">
+            Tutti votano tutti i ristoranti. Uno alla volta. Nessuna pietà.
+          </p>
+        </div>
+
+        <div className="card">
+          <Slider label="🍝 Cibo" value={cibo} onChange={setCibo} />
+          <Slider label="🛎 Servizio" value={servizio} onChange={setServizio} />
+          <Slider label="🏠 Location" value={location} onChange={setLocation} />
+          <Slider label="💸 Conto" value={conto} onChange={setConto} />
+
+          {bonusEnabled && (
+            <label className="row bonusRow">
+              <span>✨ Bonus speciale (+5)</span>
+              <input
+                type="checkbox"
+                checked={bonusUsed}
+                onChange={(e) => setBonusUsed(e.target.checked)}
+              />
+            </label>
+          )}
+
+          <div className="totals">
+            <span>Totale voto</span>
+            <strong>{perVoteTotal}</strong>
+          </div>
+
+          <button type="button" onClick={submitVote}>
+            Conferma voto
+          </button>
+          <button type="button" className="secondary" onClick={resetVoteSliders}>
+            Reset voto
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (screen === "ranking") {
+    const visibleRows = ranking.slice(0, revealCount);
+    const winner = ranking?.[0]?.name || "—";
+
+    return (
+      <div className="screen center rankingStage">
+        {saveToast && <div className="toast">{saveToast}</div>}
+
+        <div className="stageHeader">
+          <h1 className="stageTitle">🏆 Classifica finale</h1>
+          <p className="muted">Modalità studio TV: reveal a effetto. Screenshot pronta 📸</p>
+        </div>
+
+        {!revealStarted ? (
+          <div className="card stageCard">
+            <p className="muted" style={{ marginTop: 0 }}>
+              Pronti? Silenzio in sala. Si svela la classifica.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setRevealStarted(true);
+                setRevealCount(0);
+              }}
+            >
+              Mostra classifica 🎬
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => {
+                setRevealStarted(true);
+                setRevealCount(ranking.length);
+              }}
+            >
+              Salta reveal (mostra tutto)
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="card ranking rankingReveal">
+              {visibleRows.map((r, i) => (
+                <div
+                  key={r.name}
+                  className={`rankRow revealRow ${i === 0 ? "winner" : ""}`}
+                  style={{ animationDelay: `${i * 90}ms` }}
+                >
+                  <span className="pos">{i + 1}</span>
+                  <span className="name">{r.name}</span>
+                  <span className="score">{r.score}</span>
+                </div>
               ))}
+
+              {revealCount >= ranking.length && (
+                <div className="winnerBanner">
+                  <div className="winnerGlow" />
+                  <div className="winnerText">
+                    Vincitore: <strong>{winner}</strong>
+                  </div>
+                  <div className="winnerSub">“Qui si spadella sul serio.”</div>
+                </div>
+              )}
+            </div>
+
+            <div className="stack">
+              <button type="button" onClick={restart}>
+                Nuova partita
+              </button>
+            </div>
           </>
         )}
       </div>
     );
   }
 
-  if (screen === "history") {
-    return (
-      <History
-        history={history}
-        loading={loadingHistory}
-        onBack={() => setScreen("home")}
-      />
-    );
-  }
-
-  if (screen === "setup") {
-    return (
-      <Setup
-        onBack={() => setScreen("home")}
-        onStart={async (settings) => {
-          const data = {
-            id: newMatchId(),
-            settings,
-            currentRestaurant: 0,
-            currentPlayer: 0,
-            votes: [],
-            createdAt: Date.now(),
-            finished: false,
-          };
-          setActiveId(data.id);
-          setMatch(data);
-          setMusicOn(!!settings.music);
-
-          await saveActive(user.uid, data);
-          await playFX("confirm.mp3", 0.45);
-          setScreen("vote");
-        }}
-      />
-    );
-  }
-
-  if (screen === "vote") {
-    if (!match?.settings) {
-      return (
-        <div className="screen center">
-          <p className="subtitle">Non trovo la partita. Torno alla home.</p>
-          <button onClick={() => setScreen("home")}>Home</button>
-        </div>
-      );
-    }
-
-    return (
-      <Vote
-        match={match}
-        onHome={async () => {
-          await playFX("tap.mp3", 0.35);
-          setScreen("home");
-        }}
-        onUpdate={async (updated) => {
-          setMatch(updated);
-          await saveActive(user.uid, updated);
-        }}
-        onFinish={async (updated, ranking) => {
-          const finished = { ...updated, finished: true };
-          setMatch(finished);
-          await saveActive(user.uid, finished);
-
-          // stacca “attiva” e salva nello storico
-          await clearActive(user.uid);
-          await pushHistory(user.uid, finished, ranking);
-
-          await playFX("winner.mp3", 0.6);
-          setScreen("ranking");
-        }}
-        onPause={async () => {
-          await playFX("tap.mp3", 0.35);
-          setScreen("home");
-        }}
-      />
-    );
-  }
-
-  if (screen === "ranking") {
-    return (
-      <Ranking
-        match={match}
-        onHome={async () => {
-          await playFX("tap.mp3", 0.35);
-          setScreen("home");
-        }}
-        onNew={async () => {
-          await playFX("confirm.mp3", 0.45);
-          setScreen("setup");
-        }}
-      />
-    );
-  }
-
   return null;
 }
 
-// -------------------- SETUP --------------------
-function Setup({ onBack, onStart }) {
-  const [players, setPlayers] = useState(4);
-  const [restaurantsCount, setRestaurantsCount] = useState(4);
-  const [bonusEnabled, setBonusEnabled] = useState(true);
-  const [music, setMusic] = useState(false);
-
-  const [names, setNames] = useState([
-    "Trattoria Roma",
-    "Osteria Bella",
-    "La Bottega",
-    "Spadella Club",
-    "Il Fornello",
-    "Cucina d’Autore",
-    "A Tavola!",
-    "Pane & Drama",
-  ]);
-
+function Slider({ label, value, onChange }) {
   return (
-    <div className="screen">
-      <h2>Setup partita</h2>
-
-      <div className="card">
-        <label>
-          Partecipanti: <b>{players}</b>
-        </label>
-        <input
-          type="range"
-          min="4"
-          max="8"
-          value={players}
-          onChange={(e) => setPlayers(+e.target.value)}
-        />
-
-        <label>
-          Ristoranti in gara: <b>{restaurantsCount}</b>
-        </label>
-        <input
-          type="range"
-          min="4"
-          max="8"
-          value={restaurantsCount}
-          onChange={(e) => setRestaurantsCount(+e.target.value)}
-        />
-
-        <div className="toggles">
-          <label className="toggle bonus">
-            <input
-              type="checkbox"
-              checked={bonusEnabled}
-              onChange={(e) => setBonusEnabled(e.target.checked)}
-            />
-            Bonus Special (+5) disponibile
-          </label>
-
-          <label className="toggle">
-            <input
-              type="checkbox"
-              checked={music}
-              onChange={(e) => setMusic(e.target.checked)}
-            />
-            Musica della serata (se presente)
-          </label>
-        </div>
-      </div>
-
-      <p className="subtitle">Nomi ristoranti:</p>
-      {Array.from({ length: restaurantsCount }).map((_, i) => (
-        <input
-          key={i}
-          type="text"
-          value={names[i] || ""}
-          onChange={(e) => {
-            const copy = [...names];
-            copy[i] = e.target.value;
-            setNames(copy);
-          }}
-          placeholder={`Ristorante ${i + 1}`}
-        />
-      ))}
-
-      <div className="row">
-        <button
-          onClick={() =>
-            onStart({
-              players,
-              restaurants: names
-                .slice(0, restaurantsCount)
-                .map((s, i) => (s?.trim() ? s.trim() : `Ristorante ${i + 1}`)),
-              bonusEnabled,
-              music,
-            })
-          }
-        >
-          Si va a tavola 🍷
-        </button>
-        <button className="ghost" onClick={onBack}>
-          Indietro
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// -------------------- VOTE --------------------
-function Vote({ match, onUpdate, onFinish, onHome, onPause }) {
-  const { settings, currentRestaurant, currentPlayer, votes } = match;
-  const restaurantName = settings.restaurants[currentRestaurant];
-
-  const [scores, setScores] = useState({
-    cibo: 6,
-    servizio: 6,
-    location: 6,
-    conto: 6,
-  });
-  const [useBonus, setUseBonus] = useState(false);
-  const [flash, setFlash] = useState(false);
-
-  const baseTotal =
-    scores.cibo + scores.servizio + scores.location + scores.conto;
-  const finalTotal = baseTotal + (useBonus ? 5 : 0);
-
-  function bump() {
-    setFlash(true);
-    setTimeout(() => setFlash(false), 220);
-  }
-
-  function computeRanking(allVotes) {
-    const totals = Array(settings.restaurants.length).fill(0);
-    allVotes.forEach((v) => {
-      totals[v.restaurantIndex] += v.total ?? 0;
-    });
-    return settings.restaurants
-      .map((name, i) => ({ name, score: totals[i] }))
-      .sort((a, b) => b.score - a.score);
-  }
-
-  const submit = async () => {
-    await playFX("slider.mp3", 0.25);
-
-    const vote = {
-      restaurantIndex: currentRestaurant,
-      playerIndex: currentPlayer,
-      ...scores,
-      total: finalTotal,
-      bonusApplied: !!useBonus,
-    };
-
-    const newVotes = [...votes, vote];
-
-    let nextPlayer = currentPlayer + 1;
-    let nextRestaurant = currentRestaurant;
-
-    if (nextPlayer >= settings.players) {
-      nextPlayer = 0;
-      nextRestaurant += 1;
-    }
-
-    const updated = {
-      ...match,
-      votes: newVotes,
-      currentPlayer: nextPlayer,
-      currentRestaurant: nextRestaurant,
-    };
-
-    if (nextRestaurant >= settings.restaurants.length) {
-      const ranking = computeRanking(newVotes);
-      await onFinish(updated, ranking);
-      return;
-    }
-
-    await playFX("confirm.mp3", 0.45);
-    await onUpdate(updated);
-
-    setScores({ cibo: 6, servizio: 6, location: 6, conto: 6 });
-    setUseBonus(false);
-  };
-
-  const Slider = ({ label, k, emoji }) => (
     <div className="slider">
       <div className="sliderHead">
-        <span>
-          {emoji} {label}
-        </span>
-        <b>{scores[k]}</b>
+        <span>{label}</span>
+        <strong>{value}</strong>
       </div>
       <input
         type="range"
         min="0"
         max="10"
-        value={scores[k]}
-        onChange={(e) => {
-          setScores({ ...scores, [k]: +e.target.value });
-          bump();
-        }}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
       />
-    </div>
-  );
-
-  return (
-    <div className="screen">
-      <div className="pill">
-        Ristorante <b>{currentRestaurant + 1}</b> / {settings.restaurants.length} ·
-        Giocatore <b>{currentPlayer + 1}</b> / {settings.players}
-      </div>
-
-      <div className="card">
-        <h2 className="title">{restaurantName}</h2>
-        <p className="subtitle">“Qui si spadella… e si giudica.”</p>
-
-        <Slider label="Cibo" k="cibo" emoji="🍝" />
-        <Slider label="Servizio" k="servizio" emoji="🛎️" />
-        <Slider label="Location" k="location" emoji="🏠" />
-        <Slider label="Conto" k="conto" emoji="💸" />
-
-        {settings.bonusEnabled && (
-          <label className="toggle bonus">
-            <input
-              type="checkbox"
-              checked={useBonus}
-              onChange={(e) => setUseBonus(e.target.checked)}
-            />
-            Bonus Special: <b>+5</b> (facoltativo)
-          </label>
-        )}
-
-        <div className={`totale ${flash ? "flash" : ""}`}>
-          Totale: <b>{baseTotal}</b>
-          {useBonus ? <span className="bonusTag"> +5</span> : null}
-          <span className="finalTotal"> = {finalTotal}</span>
-        </div>
-
-        <button onClick={submit}>Conferma voto</button>
-
-        <div className="row">
-          <button className="ghost" onClick={onPause}>
-            Metti in pausa (salva)
-          </button>
-          <button className="ghost" onClick={onHome}>
-            Home
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// -------------------- RANKING --------------------
-function Ranking({ match, onHome, onNew }) {
-  const settings = match?.settings;
-  const votes = match?.votes || [];
-
-  if (!settings) {
-    return (
-      <div className="screen center">
-        <p className="subtitle">Nessuna classifica disponibile.</p>
-        <button onClick={onHome}>Home</button>
-      </div>
-    );
-  }
-
-  const totals = Array(settings.restaurants.length).fill(0);
-  votes.forEach((v) => (totals[v.restaurantIndex] += v.total ?? 0));
-
-  const ranking = settings.restaurants
-    .map((name, i) => ({ name, score: totals[i] }))
-    .sort((a, b) => b.score - a.score);
-
-  const [visibleCount, setVisibleCount] = useState(0);
-
-  useEffect(() => {
-    setVisibleCount(0);
-    playFX("drumroll.mp3", 0.45);
-  }, []);
-
-  useEffect(() => {
-    if (visibleCount < ranking.length) {
-      const t = setTimeout(() => setVisibleCount((v) => v + 1), 650);
-      return () => clearTimeout(t);
-    }
-  }, [visibleCount, ranking.length]);
-
-  const done = visibleCount >= ranking.length;
-
-  return (
-    <div className="screen ranking">
-      <h1>🏆 Il verdetto è servito</h1>
-      <p className="subtitle">Screenshot-ready. Nessuna pietà.</p>
-
-      <div className="rankingBox">
-        {ranking.slice(0, visibleCount).map((r, i) => (
-          <div
-            key={i}
-            className={`ranking-item ${done && i === 0 ? "winner" : ""}`}
-            style={{ animationDelay: `${i * 120}ms` }}
-          >
-            <span>
-              {i + 1}. {r.name}
-            </span>
-            <span>{r.score}</span>
-          </div>
-        ))}
-      </div>
-
-      {done && (
-        <>
-          <p className="final-badge">🍳 4 Spadellate — la sentenza è definitiva</p>
-          <div className="row">
-            <button onClick={onNew}>Nuova partita</button>
-            <button className="ghost" onClick={onHome}>
-              Home
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// -------------------- HISTORY --------------------
-function History({ history, loading, onBack }) {
-  return (
-    <div className="screen">
-      <h2>Storico vincitori</h2>
-      <p className="subtitle">Le ultime 20 partite concluse.</p>
-
-      <div className="card">
-        {loading ? (
-          <p className="subtitle">Carico storico…</p>
-        ) : history.length === 0 ? (
-          <p className="subtitle">Ancora nulla. È il momento di fare storia.</p>
-        ) : (
-          history.map((h) => (
-            <div key={h.id} className="ranking-item">
-              <span>
-                🏆 <b>{h.winner}</b> · {h.players} giocatori · {h.restaurants?.length || 0} ristoranti
-              </span>
-              <span>⭐</span>
-            </div>
-          ))
-        )}
-      </div>
-
-      <button className="ghost" onClick={onBack}>
-        Indietro
-      </button>
     </div>
   );
 }

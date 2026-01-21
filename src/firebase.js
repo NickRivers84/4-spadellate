@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -8,10 +8,13 @@ const firebaseConfig = {
   projectId: "spadellate",
   storageBucket: "spadellate.firebasestorage.app",
   messagingSenderId: "427173015074",
-  appId: "1:427173015074:web:683a00d1e000b06c96a47b"
+  appId: "1:427173015074:web:683a00d1e000b06c96a47b",
 };
 
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
+// Persistenza: l’utente resta loggato anche chiudendo/riaprendo
+setPersistence(auth, browserLocalPersistence).catch(() => {});
+
 export const db = getFirestore(app);
