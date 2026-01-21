@@ -33,7 +33,6 @@ async function audioExists(url) {
 
 function useSfx() {
   const cacheRef = useRef(new Map());
-
   const play = async (file, volume = 0.7) => {
     const url = `/audio/${file}`;
     if (!cacheRef.current.has(url)) {
@@ -41,17 +40,22 @@ function useSfx() {
       cacheRef.current.set(url, ok);
     }
     if (!cacheRef.current.get(url)) return;
-
     try {
       const a = new Audio(url);
       a.volume = volume;
       await a.play();
     } catch {
-      // ignore (autoplay/policy)
+      // policy / autoplay
     }
   };
-
   return { play };
+}
+
+function prettyErr(e) {
+  if (!e) return "";
+  const code = e.code ? String(e.code) : "";
+  const msg = e.message ? String(e.message) : String(e);
+  return [code, msg].filter(Boolean).join(" — ");
 }
 
 export default function App() {
@@ -62,9 +66,17 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
 
+  // 🔥 DIAGNOSTICA LOGIN (mostra errori senza DevTools)
+  const [authDiag, setAuthDiag] = useState({
+    origin: "",
+    redirectResult: "",
+    clickError: "",
+    note: "",
+  });
+
   const provider = useMemo(() => {
     const p = new GoogleAuthProvider();
-    // opzionale: forzare sempre scelta account
+    // forziamo la scelta account (utile se hai più account)
     p.setCustomParameters({ prompt: "select_account" });
     return p;
   }, []);
@@ -152,14 +164,30 @@ export default function App() {
     return collection(db, "users", uid, "history");
   }, [uid]);
 
-  // 1) completa eventuale login redirect (IMPORTANTISSIMO)
+  // 0) salva origin in diagnostica
+  useEffect(() => {
+    setAuthDiag((d) => ({
+      ...d,
+      origin: window.location.origin,
+      note:
+        "Se qui appare auth/unauthorized-domain, stai modificando il client OAuth sbagliato (Google Cloud) oppure manca l’origin esatto nel client Web.",
+    }));
+  }, []);
+
+  // 1) completa eventuale login redirect
   useEffect(() => {
     (async () => {
       try {
         setAuthBusy(true);
-        await getRedirectResult(auth);
+        const res = await getRedirectResult(auth);
+        // res può essere null se non c’è un redirect in corso: non è errore
+        if (res?.user) {
+          setAuthDiag((d) => ({ ...d, redirectResult: "✅ Redirect OK (utente ricevuto)" }));
+        } else {
+          setAuthDiag((d) => ({ ...d, redirectResult: "ℹ️ Nessun redirect result (normale se non stavi loggando)" }));
+        }
       } catch (e) {
-        console.error("getRedirectResult error:", e);
+        setAuthDiag((d) => ({ ...d, redirectResult: "❌ " + prettyErr(e) }));
       } finally {
         setAuthBusy(false);
       }
@@ -299,7 +327,7 @@ export default function App() {
       setScreen("vote");
     } catch (e) {
       console.error(e);
-      alert("Errore ripristino partita (vedi console).");
+      alert("Errore ripristino partita.");
     } finally {
       setLoadingCloud(false);
     }
@@ -334,10 +362,10 @@ export default function App() {
   const login = async () => {
     try {
       setAuthBusy(true);
+      setAuthDiag((d) => ({ ...d, clickError: "" }));
       await signInWithRedirect(auth, provider);
     } catch (e) {
-      console.error(e);
-      alert("Login fallito. Controlla console.");
+      setAuthDiag((d) => ({ ...d, clickError: "❌ " + prettyErr(e) }));
       setAuthBusy(false);
     }
   };
@@ -359,9 +387,7 @@ export default function App() {
     resetVoteSliders();
     setScreen("vote");
 
-    saveActiveMatch({ screen: "vote", voteIndex: 0, votes: [] }).catch(
-      console.error
-    );
+    saveActiveMatch({ screen: "vote", voteIndex: 0, votes: [] }).catch(() => {});
   };
 
   const submitVote = () => {
@@ -385,23 +411,14 @@ export default function App() {
       setRevealStarted(false);
       setRevealCount(0);
       setScreen("ranking");
-
-      saveActiveMatch({
-        screen: "ranking",
-        votes: nextVotes,
-        voteIndex: nextIndex,
-      }).catch(console.error);
+      saveActiveMatch({ screen: "ranking", votes: nextVotes, voteIndex: nextIndex }).catch(() => {});
       return;
     }
 
     setVoteIndex(nextIndex);
     resetVoteSliders();
 
-    saveActiveMatch({
-      votes: nextVotes,
-      voteIndex: nextIndex,
-      screen: "vote",
-    }).catch(console.error);
+    saveActiveMatch({ votes: nextVotes, voteIndex: nextIndex, screen: "vote" }).catch(() => {});
   };
 
   const restart = () => {
@@ -429,7 +446,6 @@ export default function App() {
     if (screen !== "ranking") return;
     if (!uid) return;
     if (votes.length === 0) return;
-
     saveHistory(ranking, votes.length).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen]);
@@ -453,11 +469,7 @@ export default function App() {
         if (cancelled) return;
         setRevealCount(i);
 
-        if (i === 1) {
-          setTimeout(() => {
-            playSfx("winner.mp3", 0.7);
-          }, 250);
-        }
+        if (i === 1) setTimeout(() => playSfx("winner.mp3", 0.7), 250);
 
         await new Promise((r) => setTimeout(r, i === 1 ? 900 : 650));
       }
@@ -479,6 +491,7 @@ export default function App() {
     );
   }
 
+  // NOT LOGGED IN
   if (!user) {
     return (
       <div className="screen center">
@@ -491,13 +504,24 @@ export default function App() {
           {authBusy ? "Accesso in corso…" : "Accedi con Google"}
         </button>
 
-        <p className="tiny muted" style={{ marginTop: 10 }}>
-          Se hai popup bloccati o PWA, il login avviene via reindirizzamento (più stabile).
-        </p>
+        {/* DIAGNOSTICA */}
+        <div className="card" style={{ marginTop: 14, maxWidth: 720 }}>
+          <h3 style={{ marginTop: 0 }}>🧪 Diagnostica login</h3>
+          <p className="tiny muted" style={{ marginTop: 0 }}>
+            Copia queste righe e incollale qui se il login “rimbalza”.
+          </p>
+          <div className="tiny" style={{ textAlign: "left" }}>
+            <div><strong>Origin:</strong> {authDiag.origin}</div>
+            <div><strong>Redirect result:</strong> {authDiag.redirectResult}</div>
+            <div><strong>Click error:</strong> {authDiag.clickError}</div>
+            <div className="muted" style={{ marginTop: 8 }}>{authDiag.note}</div>
+          </div>
+        </div>
       </div>
     );
   }
 
+  // HOME
   if (screen === "home") {
     return (
       <div className="screen center">
@@ -551,6 +575,7 @@ export default function App() {
     );
   }
 
+  // SETUP
   if (screen === "setup") {
     return (
       <div className="screen">
@@ -564,14 +589,10 @@ export default function App() {
             <span>Ristoranti</span>
             <select
               value={restaurantsCount}
-              onChange={(e) =>
-                setRestaurantsCount(clamp(Number(e.target.value), 4, 8))
-              }
+              onChange={(e) => setRestaurantsCount(clamp(Number(e.target.value), 4, 8))}
             >
               {[4, 5, 6, 7, 8].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
+                <option key={n} value={n}>{n}</option>
               ))}
             </select>
           </label>
@@ -580,14 +601,10 @@ export default function App() {
             <span>Partecipanti</span>
             <select
               value={playersCount}
-              onChange={(e) =>
-                setPlayersCount(clamp(Number(e.target.value), 4, 8))
-              }
+              onChange={(e) => setPlayersCount(clamp(Number(e.target.value), 4, 8))}
             >
               {[4, 5, 6, 7, 8].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
+                <option key={n} value={n}>{n}</option>
               ))}
             </select>
           </label>
@@ -609,10 +626,6 @@ export default function App() {
               onChange={(e) => setMusicEnabled(e.target.checked)}
             />
           </label>
-
-          <p className="tiny muted">
-            (Audio reveal classifica: metti drumroll.mp3 + winner.mp3 in /public/audio)
-          </p>
         </div>
 
         <div className="grid2">
@@ -647,11 +660,7 @@ export default function App() {
           <button type="button" onClick={startMatch}>
             Avvia la cena 🍷
           </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => setScreen("home")}
-          >
+          <button type="button" className="secondary" onClick={() => setScreen("home")}>
             Indietro
           </button>
         </div>
@@ -659,6 +668,7 @@ export default function App() {
     );
   }
 
+  // VOTE
   if (screen === "vote") {
     return (
       <div className="screen">
@@ -694,9 +704,7 @@ export default function App() {
           <h3>
             👤 {players[currentPlayer]} vota → 🍽️ {restaurants[currentRestaurant]}
           </h3>
-          <p className="tiny muted">
-            Tutti votano tutti i ristoranti. Uno alla volta. Nessuna pietà.
-          </p>
+          <p className="tiny muted">Tutti votano tutti. Uno alla volta.</p>
         </div>
 
         <div className="card">
@@ -708,11 +716,7 @@ export default function App() {
           {bonusEnabled && (
             <label className="row bonusRow">
               <span>✨ Bonus speciale (+5)</span>
-              <input
-                type="checkbox"
-                checked={bonusUsed}
-                onChange={(e) => setBonusUsed(e.target.checked)}
-              />
+              <input type="checkbox" checked={bonusUsed} onChange={(e) => setBonusUsed(e.target.checked)} />
             </label>
           )}
 
@@ -721,17 +725,14 @@ export default function App() {
             <strong>{perVoteTotal}</strong>
           </div>
 
-          <button type="button" onClick={submitVote}>
-            Conferma voto
-          </button>
-          <button type="button" className="secondary" onClick={resetVoteSliders}>
-            Reset voto
-          </button>
+          <button type="button" onClick={submitVote}>Conferma voto</button>
+          <button type="button" className="secondary" onClick={resetVoteSliders}>Reset voto</button>
         </div>
       </div>
     );
   }
 
+  // RANKING
   if (screen === "ranking") {
     const visibleRows = ranking.slice(0, revealCount);
     const winner = ranking?.[0]?.name || "—";
@@ -742,30 +743,19 @@ export default function App() {
 
         <div className="stageHeader">
           <h1 className="stageTitle">🏆 Classifica finale</h1>
-          <p className="muted">Modalità studio TV: reveal a effetto. Screenshot pronta 📸</p>
+          <p className="muted">Modalità studio TV: reveal a effetto.</p>
         </div>
 
         {!revealStarted ? (
           <div className="card stageCard">
-            <p className="muted" style={{ marginTop: 0 }}>
-              Pronti? Silenzio in sala. Si svela la classifica.
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                setRevealStarted(true);
-                setRevealCount(0);
-              }}
-            >
+            <p className="muted" style={{ marginTop: 0 }}>Pronti? Silenzio in sala.</p>
+            <button type="button" onClick={() => { setRevealStarted(true); setRevealCount(0); }}>
               Mostra classifica 🎬
             </button>
             <button
               type="button"
               className="secondary"
-              onClick={() => {
-                setRevealStarted(true);
-                setRevealCount(ranking.length);
-              }}
+              onClick={() => { setRevealStarted(true); setRevealCount(ranking.length); }}
             >
               Salta reveal (mostra tutto)
             </button>
@@ -797,9 +787,7 @@ export default function App() {
             </div>
 
             <div className="stack">
-              <button type="button" onClick={restart}>
-                Nuova partita
-              </button>
+              <button type="button" onClick={restart}>Nuova partita</button>
             </div>
           </>
         )}
@@ -817,13 +805,7 @@ function Slider({ label, value, onChange }) {
         <span>{label}</span>
         <strong>{value}</strong>
       </div>
-      <input
-        type="range"
-        min="0"
-        max="10"
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
+      <input type="range" min="0" max="10" value={value} onChange={(e) => onChange(Number(e.target.value))} />
     </div>
   );
 }
