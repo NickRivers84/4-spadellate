@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   GoogleAuthProvider,
-  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   onAuthStateChanged,
   signOut,
+  setPersistence,
+  browserLocalPersistence,
 } from "firebase/auth";
 import {
   collection,
@@ -21,7 +22,7 @@ import {
 import { auth, db } from "./firebase";
 import "./App.css";
 
-const BUILD_ID = "vercel-auth-fix-002"; // 👈 deve cambiare anche sul sito dopo il deploy
+const BUILD_ID = "vercel-auth-fix-004"; // 👈 deve comparire sul sito
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -70,20 +71,71 @@ export default function App() {
   const [authDiag, setAuthDiag] = useState({
     origin: "",
     ua: "",
-    // eventi “anti-bug”
-    clickCaptureAt: "",
-    pointerDownAt: "",
     loginStartAt: "",
-    // esiti
-    popupResult: "",
     redirectResult: "",
     clickError: "",
+    mode: "",
   });
+
+  // ✅ In produzione (Vercel) usiamo SEMPRE redirect (molto più stabile del popup)
+  const loginMode = useMemo(() => {
+    const h = window.location.hostname;
+    if (h === "localhost" || h === "127.0.0.1") return "popup"; // qui potresti usare popup, ma noi useremo comunque redirect per coerenza
+    return "redirect";
+  }, []);
 
   const provider = useMemo(() => {
     const p = new GoogleAuthProvider();
     p.setCustomParameters({ prompt: "select_account" });
     return p;
+  }, []);
+
+  // init diag
+  useEffect(() => {
+    setAuthDiag((d) => ({
+      ...d,
+      origin: window.location.origin,
+      ua: navigator.userAgent,
+      mode: loginMode,
+    }));
+  }, [loginMode]);
+
+  // ✅ Forza persistenza (così dopo redirect resti loggato)
+  useEffect(() => {
+    setPersistence(auth, browserLocalPersistence).catch(() => {});
+  }, []);
+
+  // ✅ (opzionale ma utile) disattiva eventuali SW vecchi che possono cache-are cose strane
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.getRegistrations?.().then((regs) => {
+      regs.forEach((r) => r.unregister().catch(() => {}));
+    }).catch(() => {});
+  }, []);
+
+  // ✅ redirect result (questa è la CHIAVE del login via redirect)
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await getRedirectResult(auth);
+        if (res?.user) {
+          setAuthDiag((d) => ({ ...d, redirectResult: "✅ Redirect OK (utente ricevuto)" }));
+        } else {
+          setAuthDiag((d) => ({ ...d, redirectResult: "ℹ️ Nessun redirect result" }));
+        }
+      } catch (e) {
+        setAuthDiag((d) => ({ ...d, redirectResult: "❌ " + prettyErr(e) }));
+      }
+    })();
+  }, []);
+
+  // auth state
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u || null);
+      setAuthReady(true);
+    });
+    return () => unsub();
   }, []);
 
   // screens
@@ -162,49 +214,6 @@ export default function App() {
     return collection(db, "users", uid, "history");
   }, [uid]);
 
-  // init diag
-  useEffect(() => {
-    setAuthDiag((d) => ({
-      ...d,
-      origin: window.location.origin,
-      ua: navigator.userAgent,
-    }));
-  }, []);
-
-  // (debug) se un service worker vecchio rompe roba, lo togliamo.
-  // puoi lasciarlo: dopo che login funziona, non dà fastidio.
-  useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.getRegistrations?.().then((regs) => {
-      regs.forEach((r) => r.unregister().catch(() => {}));
-    }).catch(() => {});
-  }, []);
-
-  // redirect result (se stai usando redirect)
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await getRedirectResult(auth);
-        if (res?.user) {
-          setAuthDiag((d) => ({ ...d, redirectResult: "✅ Redirect OK (utente ricevuto)" }));
-        } else {
-          setAuthDiag((d) => ({ ...d, redirectResult: "ℹ️ Nessun redirect result" }));
-        }
-      } catch (e) {
-        setAuthDiag((d) => ({ ...d, redirectResult: "❌ " + prettyErr(e) }));
-      }
-    })();
-  }, []);
-
-  // auth state
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u || null);
-      setAuthReady(true);
-    });
-    return () => unsub();
-  }, []);
-
   // load cloud
   useEffect(() => {
     if (!uid || !activeMatchRef || !historyColRef) return;
@@ -271,46 +280,22 @@ export default function App() {
     setTimeout(() => setSaveToast(""), 1200);
   };
 
-  // ✅ LOGIN robusto + diagnostica
+  // ✅ LOGIN: redirect only
   const login = async () => {
     const now = new Date().toISOString();
     setAuthDiag((d) => ({
       ...d,
       loginStartAt: now,
       clickError: "",
-      popupResult: "⏳ Popup in corso…",
+      redirectResult: "⏳ Redirect in corso…",
     }));
 
     try {
       setAuthBusy(true);
-
-      const popupPromise = signInWithPopup(auth, provider);
-      const timeoutPromise = (async () => {
-        await wait(4500);
-        throw { code: "popup/timeout", message: "Popup non ha risposto (timeout)" };
-      })();
-
-      const res = await Promise.race([popupPromise, timeoutPromise]);
-
-      if (res?.user) {
-        setAuthDiag((d) => ({ ...d, popupResult: "✅ Popup OK (utente ricevuto)" }));
-      } else {
-        setAuthDiag((d) => ({ ...d, popupResult: "ℹ️ Popup senza utente (raro)" }));
-      }
+      // Il redirect naviga via: è normale che la pagina “sparisca” e poi torni
+      await signInWithRedirect(auth, provider);
     } catch (e) {
-      setAuthDiag((d) => ({
-        ...d,
-        popupResult: "❌ " + prettyErr(e) + " → fallback redirect",
-        redirectResult: "⏳ Avvio redirect…",
-      }));
-
-      try {
-        await signInWithRedirect(auth, provider);
-        return; // redirect
-      } catch (e2) {
-        setAuthDiag((d) => ({ ...d, clickError: "❌ Redirect error: " + prettyErr(e2) }));
-      }
-    } finally {
+      setAuthDiag((d) => ({ ...d, clickError: "❌ " + prettyErr(e) }));
       setAuthBusy(false);
     }
   };
@@ -413,38 +398,30 @@ export default function App() {
 
   if (!user) {
     return (
-      <div
-        className="screen center"
-        onClickCapture={() => {
-          setAuthDiag((d) => ({ ...d, clickCaptureAt: new Date().toISOString() }));
-        }}
-      >
+      <div className="screen center">
         {saveToast && <div className="toast">{saveToast}</div>}
         <h1>🍳 4 Spadellate</h1>
-        <p className="muted">Party game da tavolata (stile TV).</p>
+        <p className="muted">Login stabile su Vercel: modalità redirect.</p>
 
-        <button
-          type="button"
-          onPointerDown={() => setAuthDiag((d) => ({ ...d, pointerDownAt: new Date().toISOString() }))}
-          onClick={login}
-          disabled={authBusy}
-        >
-          {authBusy ? "Accesso in corso…" : "Accedi con Google"}
+        <button type="button" onClick={login} disabled={authBusy}>
+          {authBusy ? "Ti sto portando su Google…" : "Accedi con Google"}
         </button>
 
-        <div className="card" style={{ marginTop: 14, maxWidth: 820 }}>
+        <div className="card" style={{ marginTop: 14, maxWidth: 900 }}>
           <h3 style={{ marginTop: 0 }}>🧪 Diagnostica login</h3>
           <div className="tiny" style={{ textAlign: "left" }}>
             <div><strong>BUILD:</strong> {BUILD_ID}</div>
+            <div><strong>Mode:</strong> {authDiag.mode}</div>
             <div><strong>Origin:</strong> {authDiag.origin}</div>
             <div><strong>UserAgent:</strong> {authDiag.ua}</div>
-            <div><strong>click-capture:</strong> {authDiag.clickCaptureAt || "—"}</div>
-            <div><strong>pointerdown:</strong> {authDiag.pointerDownAt || "—"}</div>
-            <div><strong>login-start:</strong> {authDiag.loginStartAt || "—"}</div>
-            <div><strong>Popup result:</strong> {authDiag.popupResult || "—"}</div>
+            <div style={{ marginTop: 10 }}><strong>login-start:</strong> {authDiag.loginStartAt || "—"}</div>
             <div><strong>Redirect result:</strong> {authDiag.redirectResult || "—"}</div>
             <div><strong>Click error:</strong> {authDiag.clickError || "—"}</div>
           </div>
+          <p className="tiny muted" style={{ marginTop: 10 }}>
+            Nota: col redirect è normale che la pagina vada su Google e poi torni qui.
+            Quando torna, dovresti vedere “Ciao …” e il bottone “Inizia partita”.
+          </p>
         </div>
       </div>
     );
