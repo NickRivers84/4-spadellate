@@ -37,36 +37,6 @@ body{
   z-index: 0;
 }
 
-.screen::before{
-  content:"";
-  position:absolute;
-  inset:-40px;
-  background:
-    radial-gradient(700px 280px at 20% 0%, rgba(65,214,255,0.20), transparent 60%),
-    radial-gradient(700px 280px at 80% 0%, rgba(255,90,165,0.18), transparent 60%),
-    radial-gradient(900px 400px at 50% 10%, rgba(243,200,106,0.10), transparent 65%);
-  filter: blur(2px);
-  opacity: 0.9;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.screen::after{
-  content:"";
-  position:absolute;
-  inset:-40px;
-  background: repeating-linear-gradient(
-    180deg,
-    rgba(255,255,255,0.03),
-    rgba(255,255,255,0.03) 1px,
-    transparent 2px,
-    transparent 6px
-  );
-  opacity: 0.12;
-  pointer-events: none;
-  z-index: 0;
-}
-
 .center{ text-align:center; }
 
 h1,h2,h3{ margin: 8px 0 10px; }
@@ -100,16 +70,6 @@ h3{ font-size: 18px; }
   z-index: 999999;
 }
 
-/* SUPER-ZONA CLICK (anti overlay) */
-.loginZone{
-  position: relative;
-  z-index: 2147483647;
-  isolation: isolate;
-  display: inline-block;
-  margin-top: 8px;
-  pointer-events: auto;
-}
-
 .stack{
   display:flex;
   flex-direction: column;
@@ -118,10 +78,17 @@ h3{ font-size: 18px; }
   margin-top: 10px;
 }
 
+.loginZone{
+  position: relative;
+  z-index: 999999;
+  isolation: isolate;
+  display: inline-block;
+  margin: 12px 0 4px;
+}
+
 button{
   position: relative;
-  z-index: 2147483647;
-  pointer-events: auto;
+  z-index: 999999;
   cursor: pointer;
   border: 0;
   border-radius: 14px;
@@ -132,6 +99,12 @@ button{
   background: linear-gradient(90deg, var(--accent), rgba(243,200,106,0.85));
   box-shadow: 0 12px 30px rgba(243,200,106,0.18);
   transition: transform 120ms ease, filter 120ms ease, opacity 120ms ease;
+}
+
+.primaryBig{
+  padding: 14px 18px;
+  font-size: 16px;
+  min-width: 260px;
 }
 
 button:hover{ filter: brightness(1.03); transform: translateY(-1px); }
@@ -259,3 +232,30 @@ input[type="range"]{ width: 100%; margin: 0; }
   border: 1px solid rgba(243,200,106,0.35);
 }
 .winnerText{ font-size: 14px; }
+
+.diagBox{
+  margin-top: 14px;
+  text-align: left;
+  max-width: 980px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 16px;
+  background: rgba(255,255,255,0.04);
+  overflow: hidden;
+}
+.diagBox > summary{
+  cursor: pointer;
+  padding: 12px 14px;
+  font-weight: 800;
+  list-style: none;
+}
+.diagBox > summary::-webkit-details-marker{ display:none; }
+.diagText{
+  padding: 12px 14px 14px;
+  font-size: 12px;
+  color: rgba(247,247,251,0.85);
+}
+.diagText hr{
+  border: 0;
+  border-top: 1px solid rgba(255,255,255,0.10);
+  margin: 10px 0;
+}

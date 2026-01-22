@@ -22,7 +22,7 @@ import {
 import { auth, db } from "./firebase";
 import "./App.css";
 
-const BUILD_ID = "vercel-auth-fix-005";
+const BUILD_ID = "vercel-auth-fix-006";
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -71,7 +71,7 @@ function describeEl(el) {
       : "";
   const txt =
     typeof el.textContent === "string"
-      ? el.textContent.trim().slice(0, 40)
+      ? el.textContent.trim().replace(/\s+/g, " ").slice(0, 60)
       : "";
   return `${tag}${id}${cls}${txt ? ` — "${txt}"` : ""}`;
 }
@@ -83,21 +83,7 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
 
-  const loginMode = useMemo(() => "redirect", []);
-
-  const [authDiag, setAuthDiag] = useState({
-    origin: "",
-    ua: "",
-    mode: "",
-    clickCaptureAt: "",
-    clickCaptureTarget: "—",
-    pointerCaptureAt: "",
-    pointerCaptureTarget: "—",
-    buttonPointerDownAt: "",
-    loginStartAt: "",
-    redirectResult: "",
-    clickError: "",
-  });
+  const loginMode = "redirect";
 
   const provider = useMemo(() => {
     const p = new GoogleAuthProvider();
@@ -105,21 +91,75 @@ export default function App() {
     return p;
   }, []);
 
+  const [authDiag, setAuthDiag] = useState({
+    build: BUILD_ID,
+    mode: loginMode,
+    origin: "",
+    ua: "",
+    // react capture
+    reactPointerCaptureAt: "",
+    reactPointerTarget: "—",
+    reactClickCaptureAt: "",
+    reactClickTarget: "—",
+    // native capture (document)
+    nativePointerAt: "",
+    nativePointerTarget: "—",
+    nativeClickAt: "",
+    nativeClickTarget: "—",
+    elementFromPoint: "—",
+    xy: "—",
+    // button + login
+    buttonPointerDownAt: "",
+    loginStartAt: "",
+    redirectResult: "",
+    clickError: "",
+  });
+
   useEffect(() => {
     setAuthDiag((d) => ({
       ...d,
       origin: window.location.origin,
       ua: navigator.userAgent,
+      build: BUILD_ID,
       mode: loginMode,
     }));
-  }, [loginMode]);
+  }, []);
 
-  // Persistenza login
   useEffect(() => {
     setPersistence(auth, browserLocalPersistence).catch(() => {});
   }, []);
 
-  // Redirect result (chiave del redirect)
+  useEffect(() => {
+    const onPointerDown = (e) => {
+      const x = typeof e.clientX === "number" ? e.clientX : -1;
+      const y = typeof e.clientY === "number" ? e.clientY : -1;
+      const efp = x >= 0 && y >= 0 ? document.elementFromPoint(x, y) : null;
+
+      setAuthDiag((d) => ({
+        ...d,
+        nativePointerAt: new Date().toISOString(),
+        nativePointerTarget: describeEl(e.target),
+        elementFromPoint: describeEl(efp),
+        xy: x >= 0 && y >= 0 ? `${x},${y}` : "—",
+      }));
+    };
+
+    const onClick = (e) => {
+      setAuthDiag((d) => ({
+        ...d,
+        nativeClickAt: new Date().toISOString(),
+        nativeClickTarget: describeEl(e.target),
+      }));
+    };
+
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
@@ -135,17 +175,16 @@ export default function App() {
     })();
   }, []);
 
-  // Auth state
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u || null);
       setAuthReady(true);
+      setAuthBusy(false);
     });
     return () => unsub();
   }, []);
 
-  // --- App state
-  const [screen, setScreen] = useState("home"); // home | setup | vote | ranking
+  const [screen, setScreen] = useState("home");
   const [loadingCloud, setLoadingCloud] = useState(false);
   const [saveToast, setSaveToast] = useState("");
 
@@ -191,14 +230,8 @@ export default function App() {
   const [revealStarted, setRevealStarted] = useState(false);
   const [revealCount, setRevealCount] = useState(0);
 
-  const restaurants = useMemo(
-    () => restaurantNames.slice(0, restaurantsCount),
-    [restaurantNames, restaurantsCount]
-  );
-  const players = useMemo(
-    () => playerNames.slice(0, playersCount),
-    [playerNames, playersCount]
-  );
+  const restaurants = useMemo(() => restaurantNames.slice(0, restaurantsCount), [restaurantNames, restaurantsCount]);
+  const players = useMemo(() => playerNames.slice(0, playersCount), [playerNames, playersCount]);
 
   const totalVotesNeeded = playersCount * restaurantsCount;
   const currentPlayer = Math.floor(voteIndex / restaurantsCount);
@@ -208,15 +241,8 @@ export default function App() {
   const perVoteTotal = perVoteBase + (bonusEnabled && bonusUsed ? 5 : 0);
 
   const uid = user?.uid || null;
-  const activeMatchRef = useMemo(() => {
-    if (!uid) return null;
-    return doc(db, "users", uid, "state", "activeMatch");
-  }, [uid]);
-
-  const historyColRef = useMemo(() => {
-    if (!uid) return null;
-    return collection(db, "users", uid, "history");
-  }, [uid]);
+  const activeMatchRef = useMemo(() => (uid ? doc(db, "users", uid, "state", "activeMatch") : null), [uid]);
+  const historyColRef = useMemo(() => (uid ? collection(db, "users", uid, "history") : null), [uid]);
 
   useEffect(() => {
     if (!uid || !activeMatchRef || !historyColRef) return;
@@ -283,7 +309,6 @@ export default function App() {
     setTimeout(() => setSaveToast(""), 1200);
   };
 
-  // ✅ LOGIN redirect con diagnostica
   const login = async () => {
     const now = new Date().toISOString();
     setAuthDiag((d) => ({
@@ -324,10 +349,7 @@ export default function App() {
     try {
       setLoadingCloud(true);
       const snap = await getDoc(activeMatchRef);
-      if (!snap.exists()) {
-        alert("Nessuna partita salvata trovata.");
-        return;
-      }
+      if (!snap.exists()) return alert("Nessuna partita salvata trovata.");
       const data = snap.data();
       setRestaurantsCount(clamp(Number(data.restaurantsCount ?? 4), 4, 8));
       setPlayersCount(clamp(Number(data.playersCount ?? 4), 4, 8));
@@ -352,9 +374,7 @@ export default function App() {
   const ranking = useMemo(() => {
     const sums = Array(restaurantsCount).fill(0);
     for (const v of votes) sums[v.restaurant] += v.total;
-    return restaurants
-      .map((name, idx) => ({ name, score: sums[idx] }))
-      .sort((a, b) => b.score - a.score);
+    return restaurants.map((name, idx) => ({ name, score: sums[idx] })).sort((a, b) => b.score - a.score);
   }, [votes, restaurants, restaurantsCount]);
 
   useEffect(() => {
@@ -400,7 +420,6 @@ export default function App() {
     );
   }
 
-  // LOGIN
   if (!user) {
     return (
       <div
@@ -408,95 +427,59 @@ export default function App() {
         onPointerDownCapture={(e) => {
           setAuthDiag((d) => ({
             ...d,
-            pointerCaptureAt: new Date().toISOString(),
-            pointerCaptureTarget: describeEl(e.target),
+            reactPointerCaptureAt: new Date().toISOString(),
+            reactPointerTarget: describeEl(e.target),
           }));
         }}
         onClickCapture={(e) => {
           setAuthDiag((d) => ({
             ...d,
-            clickCaptureAt: new Date().toISOString(),
-            clickCaptureTarget: describeEl(e.target),
+            reactClickCaptureAt: new Date().toISOString(),
+            reactClickTarget: describeEl(e.target),
           }));
         }}
       >
         {saveToast && <div className="toast">{saveToast}</div>}
         <h1>🍳 4 Spadellate</h1>
-        <p className="muted">Login stabile su Vercel: modalità redirect.</p>
+        <p className="muted">Clicca il bottone sotto (redirect). Poi torni qui loggato.</p>
 
         <div className="loginZone">
           <button
             type="button"
+            className="primaryBig"
             disabled={authBusy}
-            onPointerDown={() => {
-              setAuthDiag((d) => ({ ...d, buttonPointerDownAt: new Date().toISOString() }));
-            }}
-            onMouseDown={() => {
-              setAuthDiag((d) => ({
-                ...d,
-                buttonPointerDownAt: new Date().toISOString() + " (mouseDown)",
-              }));
-            }}
+            onPointerDown={() => setAuthDiag((d) => ({ ...d, buttonPointerDownAt: new Date().toISOString() }))}
             onClick={login}
           >
-            {authBusy ? "Ti sto portando su Google…" : "Accedi con Google"}
+            {authBusy ? "Vai su Google…" : "Accedi con Google"}
           </button>
         </div>
 
-        <div className="card" style={{ marginTop: 14, maxWidth: 980 }}>
-          <h3 style={{ marginTop: 0 }}>🧪 Diagnostica login</h3>
-          <div className="tiny" style={{ textAlign: "left" }}>
-            <div>
-              <strong>BUILD:</strong> {BUILD_ID}
-            </div>
-            <div>
-              <strong>Mode:</strong> {authDiag.mode}
-            </div>
-            <div>
-              <strong>Origin:</strong> {authDiag.origin}
-            </div>
-            <div>
-              <strong>UserAgent:</strong> {authDiag.ua}
-            </div>
+        <details className="diagBox">
+          <summary>🧪 Diagnostica login (apri solo se rimbalza)</summary>
+          <div className="diagText">
+            <div><strong>BUILD:</strong> {BUILD_ID}</div>
+            <div><strong>Mode:</strong> {loginMode}</div>
+            <div><strong>Origin:</strong> {authDiag.origin}</div>
+            <div><strong>UserAgent:</strong> {authDiag.ua}</div>
 
-            <div style={{ marginTop: 10 }}>
-              <strong>pointer-capture:</strong> {authDiag.pointerCaptureAt || "—"}
-            </div>
-            <div>
-              <strong>pointer target:</strong> {authDiag.pointerCaptureTarget || "—"}
-            </div>
+            <hr />
 
-            <div style={{ marginTop: 8 }}>
-              <strong>click-capture:</strong> {authDiag.clickCaptureAt || "—"}
-            </div>
-            <div>
-              <strong>click target:</strong> {authDiag.clickCaptureTarget || "—"}
-            </div>
+            <div><strong>NATIVE target:</strong> {authDiag.nativePointerTarget || "—"}</div>
+            <div><strong>elementFromPoint:</strong> {authDiag.elementFromPoint || "—"} <span className="muted">({authDiag.xy})</span></div>
 
-            <div style={{ marginTop: 8 }}>
-              <strong>button pointerdown:</strong> {authDiag.buttonPointerDownAt || "—"}
-            </div>
-            <div>
-              <strong>login-start:</strong> {authDiag.loginStartAt || "—"}
-            </div>
+            <hr />
 
-            <div style={{ marginTop: 8 }}>
-              <strong>Redirect result:</strong> {authDiag.redirectResult || "—"}
-            </div>
-            <div>
-              <strong>Click error:</strong> {authDiag.clickError || "—"}
-            </div>
+            <div><strong>button pointerdown:</strong> {authDiag.buttonPointerDownAt || "—"}</div>
+            <div><strong>login-start:</strong> {authDiag.loginStartAt || "—"}</div>
+            <div><strong>Redirect result:</strong> {authDiag.redirectResult || "—"}</div>
+            <div><strong>Click error:</strong> {authDiag.clickError || "—"}</div>
           </div>
-          <p className="tiny muted" style={{ marginTop: 10 }}>
-            Col redirect è normale che la pagina vada su Google e poi torni qui. Quando torna, dovresti vedere “Ciao …”
-            e il bottone “Inizia partita”.
-          </p>
-        </div>
+        </details>
       </div>
     );
   }
 
-  // HOME
   if (screen === "home") {
     return (
       <div className="screen center">
@@ -505,9 +488,7 @@ export default function App() {
         <p className="muted">Ciao {user.displayName}</p>
 
         <div className="stack">
-          <button type="button" onClick={() => setScreen("setup")}>
-            Inizia partita
-          </button>
+          <button type="button" onClick={() => setScreen("setup")}>Inizia partita</button>
 
           {hasCloudSave && (
             <button type="button" className="secondary" onClick={resumeMatch} disabled={loadingCloud}>
@@ -515,9 +496,7 @@ export default function App() {
             </button>
           )}
 
-          <button type="button" className="secondary" onClick={logout}>
-            Esci
-          </button>
+          <button type="button" className="secondary" onClick={logout}>Esci</button>
         </div>
 
         {cloudHistory.length > 0 && (
@@ -536,7 +515,6 @@ export default function App() {
     );
   }
 
-  // SETUP
   if (screen === "setup") {
     return (
       <div className="screen">
@@ -546,22 +524,14 @@ export default function App() {
           <label className="row">
             <span>Ristoranti</span>
             <select value={restaurantsCount} onChange={(e) => setRestaurantsCount(clamp(Number(e.target.value), 4, 8))}>
-              {[4, 5, 6, 7, 8].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
+              {[4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </label>
 
           <label className="row">
             <span>Partecipanti</span>
             <select value={playersCount} onChange={(e) => setPlayersCount(clamp(Number(e.target.value), 4, 8))}>
-              {[4, 5, 6, 7, 8].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
+              {[4, 5, 6, 7, 8].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </label>
 
@@ -580,41 +550,26 @@ export default function App() {
           <div className="card">
             <h3>🍽️ Nomi ristoranti</h3>
             {Array.from({ length: restaurantsCount }).map((_, i) => (
-              <input
-                key={i}
-                value={restaurantNames[i] || ""}
-                onChange={(e) => updateRestaurantName(i, e.target.value)}
-                placeholder={`Ristorante ${i + 1}`}
-              />
+              <input key={i} value={restaurantNames[i] || ""} onChange={(e) => updateRestaurantName(i, e.target.value)} placeholder={`Ristorante ${i + 1}`} />
             ))}
           </div>
 
           <div className="card">
             <h3>👥 Nomi partecipanti</h3>
             {Array.from({ length: playersCount }).map((_, i) => (
-              <input
-                key={i}
-                value={playerNames[i] || ""}
-                onChange={(e) => updatePlayerName(i, e.target.value)}
-                placeholder={`Partecipante ${i + 1}`}
-              />
+              <input key={i} value={playerNames[i] || ""} onChange={(e) => updatePlayerName(i, e.target.value)} placeholder={`Partecipante ${i + 1}`} />
             ))}
           </div>
         </div>
 
         <div className="stack">
-          <button type="button" onClick={startMatch}>
-            Avvia la cena 🍷
-          </button>
-          <button type="button" className="secondary" onClick={() => setScreen("home")}>
-            Indietro
-          </button>
+          <button type="button" onClick={startMatch}>Avvia la cena 🍷</button>
+          <button type="button" className="secondary" onClick={() => setScreen("home")}>Indietro</button>
         </div>
       </div>
     );
   }
 
-  // VOTE
   if (screen === "vote") {
     const submitVote = () => {
       const payload = {
@@ -647,14 +602,10 @@ export default function App() {
     return (
       <div className="screen">
         <h2>Votazione</h2>
-        <p className="tiny muted">
-          Voto {voteIndex + 1} / {totalVotesNeeded}
-        </p>
+        <p className="tiny muted">Voto {voteIndex + 1} / {totalVotesNeeded}</p>
 
         <div className="card">
-          <h3>
-            👤 {players[currentPlayer]} vota → 🍽️ {restaurants[currentRestaurant]}
-          </h3>
+          <h3>👤 {players[currentPlayer]} vota → 🍽️ {restaurants[currentRestaurant]}</h3>
         </div>
 
         <div className="card">
@@ -675,21 +626,14 @@ export default function App() {
             <strong>{perVoteTotal}</strong>
           </div>
 
-          <button type="button" onClick={submitVote}>
-            Conferma voto
-          </button>
-          <button type="button" className="secondary" onClick={resetVoteSliders}>
-            Reset voto
-          </button>
-          <button type="button" className="secondary" onClick={() => setScreen("home")}>
-            Home
-          </button>
+          <button type="button" onClick={submitVote}>Conferma voto</button>
+          <button type="button" className="secondary" onClick={resetVoteSliders}>Reset voto</button>
+          <button type="button" className="secondary" onClick={() => setScreen("home")}>Home</button>
         </div>
       </div>
     );
   }
 
-  // RANKING
   if (screen === "ranking") {
     const visibleRows = ranking.slice(0, revealCount);
     const winner = ranking?.[0]?.name || "—";
@@ -699,13 +643,7 @@ export default function App() {
 
         {!revealStarted ? (
           <div className="card stageCard">
-            <button
-              type="button"
-              onClick={() => {
-                setRevealStarted(true);
-                setRevealCount(0);
-              }}
-            >
+            <button type="button" onClick={() => { setRevealStarted(true); setRevealCount(0); }}>
               Mostra classifica 🎬
             </button>
           </div>
@@ -721,20 +659,11 @@ export default function App() {
               ))}
               {revealCount >= ranking.length && (
                 <div className="winnerBanner">
-                  <div className="winnerText">
-                    Vincitore: <strong>{winner}</strong>
-                  </div>
+                  <div className="winnerText">Vincitore: <strong>{winner}</strong></div>
                 </div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setScreen("home");
-                setVotes([]);
-                setVoteIndex(0);
-              }}
-            >
+            <button type="button" onClick={() => { setScreen("home"); setVotes([]); setVoteIndex(0); }}>
               Nuova partita
             </button>
           </>
