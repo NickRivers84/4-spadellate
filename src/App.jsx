@@ -21,7 +21,7 @@ import {
 import { auth, db } from "./firebase";
 import "./App.css";
 
-const BUILD_ID = "vercel-auth-fix-001"; // 👈 se lo vedi sul sito, sei sulla build giusta
+const BUILD_ID = "vercel-auth-fix-002"; // 👈 deve cambiare anche sul sito dopo il deploy
 
 const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -70,6 +70,11 @@ export default function App() {
   const [authDiag, setAuthDiag] = useState({
     origin: "",
     ua: "",
+    // eventi “anti-bug”
+    clickCaptureAt: "",
+    pointerDownAt: "",
+    loginStartAt: "",
+    // esiti
     popupResult: "",
     redirectResult: "",
     clickError: "",
@@ -157,17 +162,25 @@ export default function App() {
     return collection(db, "users", uid, "history");
   }, [uid]);
 
+  // init diag
   useEffect(() => {
-    setAuthDiag({
+    setAuthDiag((d) => ({
+      ...d,
       origin: window.location.origin,
       ua: navigator.userAgent,
-      popupResult: "",
-      redirectResult: "",
-      clickError: "",
-    });
+    }));
   }, []);
 
-  // redirect result
+  // (debug) se un service worker vecchio rompe roba, lo togliamo.
+  // puoi lasciarlo: dopo che login funziona, non dà fastidio.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.getRegistrations?.().then((regs) => {
+      regs.forEach((r) => r.unregister().catch(() => {}));
+    }).catch(() => {});
+  }, []);
+
+  // redirect result (se stai usando redirect)
   useEffect(() => {
     (async () => {
       try {
@@ -258,10 +271,12 @@ export default function App() {
     setTimeout(() => setSaveToast(""), 1200);
   };
 
-  // ✅ LOGIN: popup con timeout → redirect fallback
+  // ✅ LOGIN robusto + diagnostica
   const login = async () => {
+    const now = new Date().toISOString();
     setAuthDiag((d) => ({
       ...d,
+      loginStartAt: now,
       clickError: "",
       popupResult: "⏳ Popup in corso…",
     }));
@@ -291,7 +306,7 @@ export default function App() {
 
       try {
         await signInWithRedirect(auth, provider);
-        return;
+        return; // redirect
       } catch (e2) {
         setAuthDiag((d) => ({ ...d, clickError: "❌ Redirect error: " + prettyErr(e2) }));
       }
@@ -398,24 +413,37 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="screen center">
+      <div
+        className="screen center"
+        onClickCapture={() => {
+          setAuthDiag((d) => ({ ...d, clickCaptureAt: new Date().toISOString() }));
+        }}
+      >
         {saveToast && <div className="toast">{saveToast}</div>}
         <h1>🍳 4 Spadellate</h1>
         <p className="muted">Party game da tavolata (stile TV).</p>
 
-        <button type="button" onClick={login} disabled={authBusy}>
+        <button
+          type="button"
+          onPointerDown={() => setAuthDiag((d) => ({ ...d, pointerDownAt: new Date().toISOString() }))}
+          onClick={login}
+          disabled={authBusy}
+        >
           {authBusy ? "Accesso in corso…" : "Accedi con Google"}
         </button>
 
-        <div className="card" style={{ marginTop: 14, maxWidth: 760 }}>
+        <div className="card" style={{ marginTop: 14, maxWidth: 820 }}>
           <h3 style={{ marginTop: 0 }}>🧪 Diagnostica login</h3>
           <div className="tiny" style={{ textAlign: "left" }}>
             <div><strong>BUILD:</strong> {BUILD_ID}</div>
             <div><strong>Origin:</strong> {authDiag.origin}</div>
             <div><strong>UserAgent:</strong> {authDiag.ua}</div>
-            <div><strong>Popup result:</strong> {authDiag.popupResult}</div>
-            <div><strong>Redirect result:</strong> {authDiag.redirectResult}</div>
-            <div><strong>Click error:</strong> {authDiag.clickError}</div>
+            <div><strong>click-capture:</strong> {authDiag.clickCaptureAt || "—"}</div>
+            <div><strong>pointerdown:</strong> {authDiag.pointerDownAt || "—"}</div>
+            <div><strong>login-start:</strong> {authDiag.loginStartAt || "—"}</div>
+            <div><strong>Popup result:</strong> {authDiag.popupResult || "—"}</div>
+            <div><strong>Redirect result:</strong> {authDiag.redirectResult || "—"}</div>
+            <div><strong>Click error:</strong> {authDiag.clickError || "—"}</div>
           </div>
         </div>
       </div>
@@ -494,13 +522,23 @@ export default function App() {
           <div className="card">
             <h3>🍽️ Nomi ristoranti</h3>
             {Array.from({ length: restaurantsCount }).map((_, i) => (
-              <input key={i} value={restaurantNames[i] || ""} onChange={(e) => updateRestaurantName(i, e.target.value)} placeholder={`Ristorante ${i+1}`} />
+              <input
+                key={i}
+                value={restaurantNames[i] || ""}
+                onChange={(e) => updateRestaurantName(i, e.target.value)}
+                placeholder={`Ristorante ${i+1}`}
+              />
             ))}
           </div>
           <div className="card">
             <h3>👥 Nomi partecipanti</h3>
             {Array.from({ length: playersCount }).map((_, i) => (
-              <input key={i} value={playerNames[i] || ""} onChange={(e) => updatePlayerName(i, e.target.value)} placeholder={`Partecipante ${i+1}`} />
+              <input
+                key={i}
+                value={playerNames[i] || ""}
+                onChange={(e) => updatePlayerName(i, e.target.value)}
+                placeholder={`Partecipante ${i+1}`}
+              />
             ))}
           </div>
         </div>
