@@ -21,7 +21,7 @@ import {
    CONFIG
 ========================= */
 const APP_NAME = "Forchette&Polpette";
-const BUILD = "modes-001";
+const BUILD = "modes-no-autoresume-001";
 const LS_LAST_CODE = "fpp_last_match_code";
 
 /* =========================
@@ -106,7 +106,7 @@ function useSfx() {
       a.volume = volume;
       await a.play();
     } catch {
-      // browser può bloccare audio senza gesture: ok
+      // ok: alcuni browser bloccano audio senza gesture
     }
   }
 
@@ -140,19 +140,16 @@ function MusicPlayer({ enabled }) {
 const MODES = {
   CLASSICA: {
     key: "CLASSICA",
-    title: "CLASSICA",
     subtitle: "Come lo show TV: 4×4 fissi",
     desc: "4 partecipanti • 4 ristoranti • voti completi",
   },
   PERSONALIZZATA: {
     key: "PERSONALIZZATA",
-    title: "PERSONALIZZATA",
     subtitle: "Fai tu le regole",
     desc: "2–8 partecipanti • 2–8 ristoranti • totale libertà",
   },
   ONE_SHOT: {
     key: "ONE_SHOT",
-    title: "ONE SHOT",
     subtitle: "Una sola bettola, tutti giudici",
     desc: "2–8 partecipanti • 1 ristorante • un giro secco",
   },
@@ -300,8 +297,12 @@ export default function App() {
   const [toast, setToast] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // ✅ MODIFICA CHIAVE:
+  // NIENTE auto-resume all’avvio: code parte vuoto.
+  const [code, setCode] = useState("");
+  const [lastCode, setLastCode] = useState(localStorage.getItem(LS_LAST_CODE) || "");
+
   // Match
-  const [code, setCode] = useState(localStorage.getItem(LS_LAST_CODE) || "");
   const [match, setMatch] = useState(null);
   const [musicOn, setMusicOn] = useState(false);
 
@@ -318,9 +319,12 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // ========= MATCH SUBSCRIBE
+  // ========= MATCH SUBSCRIBE (solo se user + code impostati)
   useEffect(() => {
-    if (!user || !code) return;
+    if (!user || !code) {
+      setMatch(null);
+      return;
+    }
 
     const ref = matchRef(code);
     const unsub = onSnapshot(
@@ -382,7 +386,6 @@ export default function App() {
   const currentRestaurant = restaurantNames[rIndex] || `Ristorante ${rIndex + 1}`;
 
   const bonusEnabled = !!settings?.bonusEnabled;
-
   const bonusUsedByP = state?.bonusUsedByP || {};
   const votesByP = state?.votesByP || {};
 
@@ -429,9 +432,9 @@ export default function App() {
     try {
       setBusy(true);
       await signOut(auth);
+      // Nota: non tocchiamo lastCode: resta disponibile per “Riprendi partita”
       setMatch(null);
       setCode("");
-      localStorage.removeItem(LS_LAST_CODE);
       setScreen("home");
     } catch (e) {
       console.error(e);
@@ -448,7 +451,11 @@ export default function App() {
       play("tap.mp3", 0.5);
 
       const newCode = await createNewMatch({ user, mode: selectedMode });
+
+      // non auto-resume all’avvio, ma qui l’utente ha scelto di creare -> ok caricare
       setCode(newCode);
+      setLastCode(newCode);
+
       setScreen("setup");
       setToast(`Partita creata! Codice: ${newCode}`);
     } catch (e) {
@@ -461,11 +468,13 @@ export default function App() {
 
   async function resumeLastMatch() {
     if (!user) return;
-    const last = localStorage.getItem(LS_LAST_CODE);
+    const last = localStorage.getItem(LS_LAST_CODE) || "";
     if (!last) return setToast("Nessuna partita salvata.");
+
     setCode(last);
-    setScreen("home");
-    setToast("Ripresa partita…");
+    setLastCode(last);
+    setToast("Partita ripresa.");
+    // lo screen verrà impostato automaticamente dalla phase su Firestore
   }
 
   async function joinByCode(input) {
@@ -480,9 +489,9 @@ export default function App() {
         return;
       }
       localStorage.setItem(LS_LAST_CODE, c);
+      setLastCode(c);
       setCode(c);
       setToast("Partita caricata!");
-      // vai su home: l'utente decide se riprendere / votare
       setScreen("home");
     } catch (e) {
       console.error(e);
@@ -549,11 +558,9 @@ export default function App() {
     let nextR = st.rIndex;
 
     if (modeNow === "ONE_SHOT") {
-      // 1 ristorante: avanzano solo i giocatori
       nextP = st.pIndex + 1;
       nextR = 0;
     } else {
-      // tutti votano tutti i ristoranti
       nextR = st.rIndex + 1;
       if (nextR >= rc) {
         nextR = 0;
@@ -576,10 +583,7 @@ export default function App() {
     try {
       play("tap.mp3", 0.45);
       await updateMatch(code, { state: nextState });
-
-      if (finished) {
-        setScreen("reveal");
-      }
+      if (finished) setScreen("reveal");
     } catch (e) {
       console.error(e);
       setToast("Errore salvando il voto.");
@@ -651,13 +655,11 @@ export default function App() {
     setRevealRunning(true);
     await play("drumroll.mp3", 0.55);
 
-    // reveal a tappe
     setRevealStep(1);
     setTimeout(() => setRevealStep(2), 900);
     setTimeout(() => setRevealStep(3), 1800);
     setTimeout(() => setRevealStep(4), 2700);
 
-    // dopo un attimo vai in ranking “definitivo”
     setTimeout(async () => {
       try {
         await updateMatch(code, { state: { ...match.state, phase: "ranking" } });
@@ -705,7 +707,7 @@ export default function App() {
               <div className="title">{APP_NAME}</div>
               <div className="sub">
                 <Pill>BUILD: {BUILD}</Pill>
-                {code ? <Pill>CODICE: {code}</Pill> : <Pill>NESSUNA PARTITA</Pill>}
+                {code ? <Pill>CODICE: {code}</Pill> : <Pill>NESSUNA PARTITA CARICATA</Pill>}
               </div>
             </div>
           </div>
@@ -737,9 +739,7 @@ export default function App() {
             {!user ? (
               <div className="centerStack">
                 <h2 className="h2">Benvenuto in studio.</h2>
-                <p className="muted">
-                  Per salvare partite e storico serve l’accesso Google.
-                </p>
+                <p className="muted">Per salvare partite e storico serve l’accesso Google.</p>
                 <button className="btn big" onClick={doLogin} disabled={busy}>
                   Accedi con Google
                 </button>
@@ -749,7 +749,7 @@ export default function App() {
                 <div className="hero">
                   <h2 className="h2">Pronti a giudicare? 🍝</h2>
                   <p className="muted">
-                    Modalità TV, setup libero o one-shot: scegli e… spadella.
+                    Ora NON riprendiamo automaticamente nulla: scegli tu.
                   </p>
                 </div>
 
@@ -758,7 +758,7 @@ export default function App() {
                     Inizia una partita
                   </button>
 
-                  <button className="btn big ghost" onClick={resumeLastMatch} disabled={!localStorage.getItem(LS_LAST_CODE)}>
+                  <button className="btn big ghost" onClick={resumeLastMatch} disabled={!lastCode}>
                     Riprendi partita
                   </button>
                 </div>
@@ -777,7 +777,7 @@ export default function App() {
                   </button>
                 </div>
 
-                {match ? (
+                {match && code ? (
                   <div className="miniCard">
                     <div className="miniRow">
                       <div>
@@ -793,7 +793,11 @@ export default function App() {
                       </div>
                     </div>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="muted small" style={{ marginTop: 10 }}>
+                    Nessuna partita caricata. Premi “Riprendi partita” oppure entra con un codice.
+                  </div>
+                )}
               </>
             )}
           </main>
@@ -803,477 +807,3 @@ export default function App() {
         {screen === "mode" && (
           <main className="panel">
             <div className="hero">
-              <h2 className="h2">Scegli la modalità</h2>
-              <p className="muted">Tre sapori. Uno solo vincitore.</p>
-            </div>
-
-            <div className="modeGrid">
-              <Card
-                title="CLASSICA"
-                subtitle={MODES.CLASSICA.subtitle}
-                desc={MODES.CLASSICA.desc}
-                onClick={() => startNewMatch("CLASSICA")}
-              />
-              <Card
-                title="PERSONALIZZATA"
-                subtitle={MODES.PERSONALIZZATA.subtitle}
-                desc={MODES.PERSONALIZZATA.desc}
-                onClick={() => startNewMatch("PERSONALIZZATA")}
-              />
-              <Card
-                title="ONE SHOT"
-                subtitle={MODES.ONE_SHOT.subtitle}
-                desc={MODES.ONE_SHOT.desc}
-                onClick={() => startNewMatch("ONE_SHOT")}
-              />
-            </div>
-
-            <div className="footerRow">
-              <button className="btn ghost" onClick={() => setScreen("home")}>
-                Indietro
-              </button>
-            </div>
-          </main>
-        )}
-
-        {/* SETUP */}
-        {screen === "setup" && match && (
-          <main className="panel scroll">
-            <div className="hero">
-              <h2 className="h2">Setup partita</h2>
-              <p className="muted">
-                Codice partita: <strong>{code}</strong>{" "}
-                <button
-                  className="linkBtn"
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard?.writeText(code);
-                    setToast("Codice copiato negli appunti.");
-                    play("tap.mp3", 0.4);
-                  }}
-                >
-                  Copia
-                </button>
-              </p>
-            </div>
-
-            <div className="chips">
-              <Pill>Modalità: {mode}</Pill>
-              <Pill>Host: {match.ownerName}</Pill>
-            </div>
-
-            <div className="setupGrid">
-              {/* CONTATORI */}
-              <div className="box">
-                <div className="boxTitle">Numeri</div>
-                <div className="muted small">
-                  CLASSICA è fissa (4×4). ONE SHOT è 1 ristorante.
-                </div>
-
-                {mode === "PERSONALIZZATA" ? (
-                  <>
-                    <div className="field">
-                      <label className="label">Partecipanti: {participantsCount}</label>
-                      <input
-                        className="slider"
-                        type="range"
-                        min="2"
-                        max="8"
-                        value={participantsCount}
-                        onChange={async (e) => {
-                          const v = clamp(Number(e.target.value), 2, 8);
-                          const next = {
-                            ...settings,
-                            participantsCount: v,
-                            participantNames: ensureArraySize(
-                              settings.participantNames,
-                              v,
-                              (i) => defaultPlayerNames()[i] || `Giocatore ${i + 1}`
-                            ),
-                          };
-                          await saveSetup(next);
-                        }}
-                      />
-                    </div>
-
-                    <div className="field">
-                      <label className="label">Ristoranti: {restaurantsCount}</label>
-                      <input
-                        className="slider"
-                        type="range"
-                        min="2"
-                        max="8"
-                        value={restaurantsCount}
-                        onChange={async (e) => {
-                          const v = clamp(Number(e.target.value), 2, 8);
-                          const next = {
-                            ...settings,
-                            restaurantsCount: v,
-                            restaurantNames: ensureArraySize(
-                              settings.restaurantNames,
-                              v,
-                              (i) => defaultRestaurantNames()[i] || `Ristorante ${i + 1}`
-                            ),
-                          };
-                          await saveSetup(next);
-                        }}
-                      />
-                    </div>
-                  </>
-                ) : mode === "ONE_SHOT" ? (
-                  <>
-                    <div className="field">
-                      <label className="label">Partecipanti: {participantsCount}</label>
-                      <input
-                        className="slider"
-                        type="range"
-                        min="2"
-                        max="8"
-                        value={participantsCount}
-                        onChange={async (e) => {
-                          const v = clamp(Number(e.target.value), 2, 8);
-                          const next = {
-                            ...settings,
-                            participantsCount: v,
-                            restaurantsCount: 1,
-                            participantNames: ensureArraySize(
-                              settings.participantNames,
-                              v,
-                              (i) => defaultPlayerNames()[i] || `Giocatore ${i + 1}`
-                            ),
-                            restaurantNames: ensureArraySize(
-                              settings.restaurantNames,
-                              1,
-                              () => settings.restaurantNames?.[0] || "Ristorante del Giorno",
-                            ),
-                          };
-                          await saveSetup(next);
-                        }}
-                      />
-                    </div>
-
-                    <div className="muted small">Ristoranti: <strong>1</strong></div>
-                  </>
-                ) : (
-                  <>
-                    <div className="muted small">Partecipanti: <strong>4</strong></div>
-                    <div className="muted small">Ristoranti: <strong>4</strong></div>
-                  </>
-                )}
-              </div>
-
-              {/* OPZIONI */}
-              <div className="box">
-                <div className="boxTitle">Opzioni</div>
-
-                <label className="checkRow">
-                  <input
-                    type="checkbox"
-                    checked={!!settings.bonusEnabled}
-                    onChange={async (e) => {
-                      await saveSetup({ ...settings, bonusEnabled: e.target.checked });
-                    }}
-                  />
-                  Bonus speciale +5 (1 volta per partecipante)
-                </label>
-
-                <label className="checkRow">
-                  <input
-                    type="checkbox"
-                    checked={!!settings.musicEnabled}
-                    onChange={async (e) => {
-                      await saveSetup({ ...settings, musicEnabled: e.target.checked });
-                    }}
-                  />
-                  Musica in sottofondo
-                </label>
-
-                <div className="muted small">
-                  Se la musica non parte, fai un click qualsiasi e poi attivala (alcuni browser richiedono “gesture”).
-                </div>
-              </div>
-
-              {/* NOMI RISTORANTI */}
-              <div className="box wide">
-                <div className="boxTitle">
-                  Nomi ristoranti{" "}
-                  <span className="muted small">
-                    ({restaurantsCount})
-                  </span>
-                </div>
-
-                <div className="nameGrid">
-                  {restaurantNames.map((val, i) => (
-                    <div key={i} className="field">
-                      <label className="label">Ristorante {i + 1}</label>
-                      <input
-                        className="input"
-                        value={val}
-                        onChange={async (e) => {
-                          const nextArr = [...restaurantNames];
-                          nextArr[i] = e.target.value;
-                          const next = { ...settings, restaurantNames: nextArr };
-                          await saveSetup(next);
-                        }}
-                        placeholder={`Ristorante ${i + 1}`}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* NOMI PARTECIPANTI */}
-              <div className="box wide">
-                <div className="boxTitle">
-                  Nomi partecipanti{" "}
-                  <span className="muted small">
-                    ({participantsCount})
-                  </span>
-                </div>
-
-                <div className="nameGrid">
-                  {participantNames.map((val, i) => (
-                    <div key={i} className="field">
-                      <label className="label">Partecipante {i + 1}</label>
-                      <input
-                        className="input"
-                        value={val}
-                        onChange={async (e) => {
-                          const nextArr = [...participantNames];
-                          nextArr[i] = e.target.value;
-                          const next = { ...settings, participantNames: nextArr };
-                          await saveSetup(next);
-                        }}
-                        placeholder={`Giocatore ${i + 1}`}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="footerRow sticky">
-              <button className="btn ghost" onClick={() => setScreen("home")}>
-                Home
-              </button>
-
-              <button
-                className="btn danger ghost"
-                onClick={resetMatchProgress}
-                title="Resetta voti e riparti dal setup"
-              >
-                Reset partita
-              </button>
-
-              <button
-                className="btn big"
-                onClick={goVoting}
-                disabled={!canStartDinner()}
-                title={!canStartDinner() ? "Inserisci tutti i nomi prima di iniziare" : ""}
-              >
-                Avvia la cena 🍷
-              </button>
-            </div>
-          </main>
-        )}
-
-        {/* VOTE */}
-        {screen === "vote" && match && (
-          <main className="panel">
-            <div className="hero">
-              <h2 className="h2">Si vota!</h2>
-              <p className="muted">
-                <strong>{currentPlayer}</strong>{" "}
-                {mode === "ONE_SHOT" ? (
-                  <>
-                    giudica <strong>{restaurantNames[0]}</strong>
-                  </>
-                ) : (
-                  <>
-                    giudica <strong>{currentRestaurant}</strong>
-                  </>
-                )}
-              </p>
-              <div className="chips">
-                <Pill>
-                  Giocatore {pIndex + 1}/{participantsCount}
-                </Pill>
-                <Pill>
-                  {mode === "ONE_SHOT"
-                    ? "Ristorante 1/1"
-                    : `Ristorante ${rIndex + 1}/${restaurantsCount}`}
-                </Pill>
-              </div>
-            </div>
-
-            <VotePanel
-              bonusEnabled={bonusEnabled}
-              bonusAlreadyUsed={!!bonusUsedByP[`p${pIndex}`]}
-              onConfirm={(vote) => submitVote(vote)}
-              sfxPlay={play}
-            />
-
-            <div className="footerRow">
-              <button className="btn ghost" onClick={() => setScreen("setup")}>
-                Torna al setup
-              </button>
-            </div>
-          </main>
-        )}
-
-        {/* REVEAL */}
-        {screen === "reveal" && match && (
-          <main className="panel">
-            <div className="hero">
-              <h2 className="h2">Luci studio. Silenzio…</h2>
-              <p className="muted">È il momento della classifica.</p>
-            </div>
-
-            <div className="revealBox">
-              <div className={`revealLine ${revealStep >= 1 ? "on" : ""}`}>🎥 Camera 1: “Facce serie”</div>
-              <div className={`revealLine ${revealStep >= 2 ? "on" : ""}`}>🥁 Rullo di tamburi…</div>
-              <div className={`revealLine ${revealStep >= 3 ? "on" : ""}`}>💡 Luci: a palla</div>
-              <div className={`revealLine ${revealStep >= 4 ? "on" : ""}`}>🏆 E adesso…</div>
-            </div>
-
-            <div className="footerRow">
-              <button className="btn ghost" onClick={resetToHome}>
-                Home
-              </button>
-              <button className="btn big" onClick={startReveal} disabled={revealRunning}>
-                Svela la classifica
-              </button>
-            </div>
-          </main>
-        )}
-
-        {/* RANKING */}
-        {screen === "ranking" && match && (
-          <main className="panel">
-            <div className="hero">
-              <h2 className="h2">🏆 Classifica finale</h2>
-              <p className="muted">Screenshot pronta 📸 (e poi… si paga il conto).</p>
-            </div>
-
-            <div className="ranking">
-              {ranking.map((r, i) => (
-                <div key={i} className={`rankItem ${i === 0 ? "winner" : ""}`}>
-                  <div className="rankLeft">
-                    <div className="rankPos">{i + 1}</div>
-                    <div className="rankName">{r.name}</div>
-                  </div>
-                  <div className="rankScore">{r.score}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="footerRow">
-              <button className="btn ghost" onClick={resetToHome}>
-                Home
-              </button>
-              <button className="btn" onClick={resetMatchProgress}>
-                Nuova partita (stesso codice)
-              </button>
-            </div>
-          </main>
-        )}
-
-        <footer className="footnote">
-          <span className="muted small">
-            Tip: se incognito “rimbalza”, è quasi sempre cookie/terze parti bloccati.
-          </span>
-        </footer>
-      </div>
-    </div>
-  );
-}
-
-/* =========================
-   VotePanel
-========================= */
-function VotePanel({ bonusEnabled, bonusAlreadyUsed, onConfirm, sfxPlay }) {
-  const [cibo, setCibo] = useState(6);
-  const [servizio, setServizio] = useState(6);
-  const [location, setLocation] = useState(6);
-  const [conto, setConto] = useState(6);
-  const [useBonus, setUseBonus] = useState(false);
-
-  const base = cibo + servizio + location + conto;
-  const total = base + (useBonus ? 5 : 0);
-
-  useEffect(() => {
-    // reset bonus toggle if already used
-    if (bonusAlreadyUsed) setUseBonus(false);
-  }, [bonusAlreadyUsed]);
-
-  const canUseBonus = bonusEnabled && !bonusAlreadyUsed;
-
-  return (
-    <div className="voteBox">
-      <div className="voteGrid">
-        <Slider label="🍝 Cibo" value={cibo} onChange={(v) => setCibo(v)} />
-        <Slider label="🛎️ Servizio" value={servizio} onChange={(v) => setServizio(v)} />
-        <Slider label="🏠 Location" value={location} onChange={(v) => setLocation(v)} />
-        <Slider label="💸 Conto" value={conto} onChange={(v) => setConto(v)} />
-      </div>
-
-      <div className="voteBottom">
-        <div className="totals">
-          <div className="totLine">
-            <span>Totale</span>
-            <strong>{total}</strong>
-          </div>
-          <div className="muted small">
-            Base {base}/40 {useBonus ? " + bonus" : ""}
-          </div>
-        </div>
-
-        <div className="bonusBlock">
-          {bonusEnabled ? (
-            <label className={`bonusToggle ${canUseBonus ? "" : "disabled"}`}>
-              <input
-                type="checkbox"
-                checked={useBonus}
-                onChange={(e) => {
-                  if (!canUseBonus) return;
-                  setUseBonus(e.target.checked);
-                  sfxPlay("tap.mp3", 0.45);
-                }}
-                disabled={!canUseBonus}
-              />
-              Applica Bonus +5{" "}
-              {!canUseBonus ? <span className="muted small">(già usato)</span> : null}
-            </label>
-          ) : (
-            <div className="muted small">Bonus disattivato dal setup</div>
-          )}
-        </div>
-
-        <button
-          className="btn big"
-          type="button"
-          onClick={() => {
-            sfxPlay("confirm.mp3", 0.7);
-            onConfirm({
-              cibo,
-              servizio,
-              location,
-              conto,
-              bonusApplied: !!useBonus && canUseBonus,
-              createdAt: nowISO(),
-            });
-
-            // reset sliders for next vote
-            setCibo(6);
-            setServizio(6);
-            setLocation(6);
-            setConto(6);
-            setUseBonus(false);
-          }}
-        >
-          Conferma voto ✅
-        </button>
-      </div>
-    </div>
-  );
-}
