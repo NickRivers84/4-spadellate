@@ -25,7 +25,7 @@ import {
 /* =========================
    CONFIG
 ========================= */
-const APP_NAME = "4 Spadellate";
+const APP_NAME = "Forchette&Polpette";
 const MATCH_COLLECTION = "matches";
 const LAST_CODE_KEY = "4sp_last_code";
 const BUILD = "avvia-fix-nested-arrays-001";
