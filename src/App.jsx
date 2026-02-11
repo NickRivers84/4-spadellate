@@ -4,1159 +4,1080 @@ import "./App.css";
 import { auth, db } from "./firebase";
 import {
   GoogleAuthProvider,
+  browserLocalPersistence,
+  browserSessionPersistence,
   onAuthStateChanged,
+  setPersistence,
   signInWithPopup,
   signOut,
 } from "firebase/auth";
 import {
+  addDoc,
+  collection,
+  deleteDoc,
   doc,
   getDoc,
   onSnapshot,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  orderBy,
+  limit,
 } from "firebase/firestore";
 
-/* =========================
-   App config
-========================= */
-const APP_NAME = "Forchette&Polpette";
-const BUILD = "modes-no-autoresume-002";
-const LS_LAST_CODE = "fpp_last_match_code";
+/* =========================================
+   BUILD TAG (per capire se stai vedendo la versione giusta)
+========================================= */
+const BUILD = "fp-modes-setup-vote-reveal-001";
 
-/* =========================
-   Helpers
-========================= */
+/* =========================================
+   Utils
+========================================= */
 function clamp(n, a, b) {
   return Math.max(a, Math.min(b, n));
 }
 
-function genCode(len = 6) {
-  const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // evita 0/O/I/1
+function nowIso() {
+  try {
+    return new Date().toISOString();
+  } catch {
+    return "";
+  }
+}
+
+function makeCode(len = 6) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out = "";
   for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
   return out;
 }
 
-function ensureSize(arr, size, fallback) {
-  const out = Array.isArray(arr) ? [...arr] : [];
-  while (out.length < size) out.push(fallback(out.length));
-  return out.slice(0, size);
-}
-
-function defaultsRestaurants() {
-  return [
-    "La Bottega",
-    "Trattoria Roma",
-    "Osteria Bella",
-    "Polpetta Palace",
-    "La Brace",
-    "Il Tegame",
-    "Forchetta & Co",
-    "Sugo Supremo",
-  ];
-}
-
-function defaultsPlayers() {
-  return [
-    "Giocatore 1",
-    "Giocatore 2",
-    "Giocatore 3",
-    "Giocatore 4",
-    "Giocatore 5",
-    "Giocatore 6",
-    "Giocatore 7",
-    "Giocatore 8",
-  ];
-}
-
-function sumVote(v) {
-  if (!v) return 0;
-  const base =
-    (v.cibo || 0) + (v.servizio || 0) + (v.location || 0) + (v.conto || 0);
-  return base + (v.bonusApplied ? 5 : 0);
-}
-
-function matchRef(code) {
-  return doc(db, "matches", code);
-}
-
-/* =========================
-   Audio safe
-========================= */
-function useSfx() {
-  const cacheRef = useRef(new Map());
-
-  async function headOk(url) {
-    try {
-      const res = await fetch(url, { method: "HEAD", cache: "no-store" });
-      return res.ok;
-    } catch {
-      return false;
-    }
+/* =========================================
+   Audio (safe play: controlla che non sia HTML)
+========================================= */
+async function audioExists(url) {
+  try {
+    const res = await fetch(url, { method: "GET", cache: "no-store" });
+    if (!res.ok) return false;
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("text/html")) return false; // Vite a volte restituisce index.html
+    return true;
+  } catch {
+    return false;
   }
+}
 
-  async function play(name, volume = 0.7) {
-    const url = `/audio/${name}`;
-    if (!cacheRef.current.has(url)) {
-      const ok = await headOk(url);
-      cacheRef.current.set(url, ok);
-    }
-    if (!cacheRef.current.get(url)) return;
-
-    try {
-      const a = new Audio(url);
-      a.volume = volume;
-      await a.play();
-    } catch {
-      // ok: browser può bloccare senza gesture
-    }
-  }
-
-  return { play };
+function useFX() {
+  const cacheRef = useRef(new Map()); // url -> boolean
+  return {
+    play: async (file, volume = 0.7) => {
+      const url = `/audio/${file}`;
+      if (!cacheRef.current.has(url)) {
+        const ok = await audioExists(url);
+        cacheRef.current.set(url, ok);
+      }
+      if (!cacheRef.current.get(url)) return;
+      try {
+        const a = new Audio(url);
+        a.volume = volume;
+        await a.play();
+      } catch {
+        // niente: browser policies / gesture ecc.
+      }
+    },
+  };
 }
 
 function MusicPlayer({ enabled }) {
   const ref = useRef(null);
+  const { play } = useFX();
 
   useEffect(() => {
-    if (!ref.current) {
-      ref.current = new Audio("/audio/background.mp3");
-      ref.current.loop = true;
-      ref.current.volume = 0.35;
+    let cancelled = false;
+
+    async function ensure() {
+      if (ref.current) return;
+      const ok = await audioExists("/audio/background.mp3");
+      if (!ok || cancelled) return;
+      const a = new Audio("/audio/background.mp3");
+      a.loop = true;
+      a.volume = 0.35;
+      ref.current = a;
     }
-    const a = ref.current;
-    if (enabled) a.play().catch(() => {});
-    else a.pause();
+
+    ensure();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      if (!enabled) {
+        try {
+          ref.current?.pause();
+        } catch {}
+        return;
+      }
+      // tenta di avviare (se bloccato, non facciamo nulla)
+      try {
+        await ref.current?.play();
+      } catch {
+        // piccolo feedback facoltativo
+        play("tap.mp3", 0.35);
+      }
+    })();
   }, [enabled]);
 
   return null;
 }
 
-/* =========================
-   UI atoms
-========================= */
-function Pill({ children }) {
-  return <span className="pill">{children}</span>;
+/* =========================================
+   Firestore paths
+========================================= */
+function activeMatchRef(uid) {
+  return doc(db, "users", uid, "state", "activeMatch");
 }
 
-function Slider({ label, value, onChange, min = 2, max = 8 }) {
+function matchesCol(uid) {
+  return collection(db, "users", uid, "matches");
+}
+
+/* =========================================
+   Game modes
+========================================= */
+const MODES = {
+  classic: {
+    id: "classic",
+    title: "CLASSICA",
+    subtitle: "Come lo show: 4 giocatori • 4 ristoranti",
+    restaurantsMin: 4,
+    restaurantsMax: 4,
+    playersMin: 4,
+    playersMax: 4,
+  },
+  custom: {
+    id: "custom",
+    title: "PERSONALIZZATA",
+    subtitle: "Scegli tu: 2–8 giocatori • 2–8 ristoranti",
+    restaurantsMin: 2,
+    restaurantsMax: 8,
+    playersMin: 2,
+    playersMax: 8,
+  },
+  oneshot: {
+    id: "oneshot",
+    title: "ONE SHOT",
+    subtitle: "Un solo ristorante • 2–8 giocatori",
+    restaurantsMin: 1,
+    restaurantsMax: 1,
+    playersMin: 2,
+    playersMax: 8,
+  },
+};
+
+/* =========================================
+   Screens
+========================================= */
+function ModeSelect({ onPick, onBack }) {
   return (
-    <div className="sliderRow">
-      <div className="sliderLabel">
-        <span>{label}</span>
-        <strong>{value}</strong>
+    <div className="screen setup" style={{ alignItems: "center" }}>
+      <div className="card" style={{ width: "100%", maxWidth: 560 }}>
+        <h2 className="h2">Scegli la modalità</h2>
+        <p className="muted">Seleziona il formato… poi si spadella (con stile).</p>
+
+        <div style={{ display: "grid", gap: 10, marginTop: 14 }}>
+          {Object.values(MODES).map((m) => (
+            <button
+              key={m.id}
+              className="btn big"
+              onClick={() => onPick(m.id)}
+              style={{ textAlign: "left" }}
+            >
+              <strong>{m.title}</strong>
+              <div className="muted" style={{ marginTop: 4 }}>
+                {m.subtitle}
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <button className="btn btn-secondary" style={{ marginTop: 14 }} onClick={onBack}>
+          ← Torna indietro
+        </button>
       </div>
-      <input
-        className="slider"
-        type="range"
-        min={min}
-        max={max}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-      />
     </div>
   );
 }
 
-function ScoreSlider({ label, value, onChange }) {
+function SetupScreen({ settings, setSettings, onStart, onBack }) {
+  const mode = MODES[settings.mode] || MODES.custom;
+
+  // mantiene array nomi coerenti con counts
+  useEffect(() => {
+    const rc = settings.restaurantsCount;
+    const pc = settings.playersCount;
+
+    if (settings.restaurantNames.length !== rc) {
+      const next = Array.from({ length: rc }).map((_, i) => settings.restaurantNames[i] || `Ristorante ${i + 1}`);
+      setSettings((s) => ({ ...s, restaurantNames: next }));
+    }
+    if (settings.playerNames.length !== pc) {
+      const next = Array.from({ length: pc }).map((_, i) => settings.playerNames[i] || `Giocatore ${i + 1}`);
+      setSettings((s) => ({ ...s, playerNames: next }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.restaurantsCount, settings.playersCount]);
+
+  const canStart =
+    settings.restaurantNames.every((x) => String(x || "").trim().length > 0) &&
+    settings.playerNames.every((x) => String(x || "").trim().length > 0);
+
   return (
-    <div className="sliderRow">
-      <div className="sliderLabel">
-        <span>{label}</span>
-        <strong>{value}</strong>
+    <div className="screen setup" style={{ alignItems: "flex-start" }}>
+      <div className="card" style={{ width: "100%", maxWidth: 560 }}>
+        <h2 className="h2">Setup partita</h2>
+        <p className="muted">Scegli tutto prima di iniziare (poi si spadella).</p>
+
+        {/* RISTORANTI */}
+        <div style={{ marginTop: 14 }}>
+          <label className="muted">
+            Ristoranti: <strong style={{ color: "#111" }}>{settings.restaurantsCount}</strong>
+          </label>
+
+          <input
+            type="range"
+            min={mode.restaurantsMin}
+            max={mode.restaurantsMax}
+            value={settings.restaurantsCount}
+            disabled={mode.restaurantsMin === mode.restaurantsMax}
+            onChange={(e) =>
+              setSettings((s) => ({ ...s, restaurantsCount: Number(e.target.value) }))
+            }
+          />
+        </div>
+
+        {/* GIOCATORI */}
+        <div style={{ marginTop: 10 }}>
+          <label className="muted">
+            Partecipanti: <strong style={{ color: "#111" }}>{settings.playersCount}</strong>
+          </label>
+          <input
+            type="range"
+            min={mode.playersMin}
+            max={mode.playersMax}
+            value={settings.playersCount}
+            onChange={(e) => setSettings((s) => ({ ...s, playersCount: Number(e.target.value) }))}
+          />
+        </div>
+
+        {/* TOGGLES */}
+        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+          <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={settings.bonusEnabled}
+              onChange={(e) => setSettings((s) => ({ ...s, bonusEnabled: e.target.checked }))}
+            />
+            Bonus facoltativo (+5) — una volta per votante
+          </label>
+
+          <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={settings.musicEnabled}
+              onChange={(e) => setSettings((s) => ({ ...s, musicEnabled: e.target.checked }))}
+            />
+            Musica (se disponibile)
+          </label>
+        </div>
+
+        {/* NOMI RISTORANTI */}
+        <div style={{ marginTop: 14 }}>
+          <h3 style={{ margin: "10px 0" }}>Nomi ristoranti</h3>
+          <div style={{ display: "grid", gap: 8 }}>
+            {settings.restaurantNames.map((v, i) => (
+              <input
+                key={`r-${i}`}
+                type="text"
+                value={v}
+                placeholder={`Ristorante ${i + 1}`}
+                onChange={(e) => {
+                  const next = [...settings.restaurantNames];
+                  next[i] = e.target.value;
+                  setSettings((s) => ({ ...s, restaurantNames: next }));
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* NOMI GIOCATORI */}
+        <div style={{ marginTop: 14 }}>
+          <h3 style={{ margin: "10px 0" }}>Nomi partecipanti</h3>
+          <div style={{ display: "grid", gap: 8 }}>
+            {settings.playerNames.map((v, i) => (
+              <input
+                key={`p-${i}`}
+                type="text"
+                value={v}
+                placeholder={`Giocatore ${i + 1}`}
+                onChange={(e) => {
+                  const next = [...settings.playerNames];
+                  next[i] = e.target.value;
+                  setSettings((s) => ({ ...s, playerNames: next }));
+                }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* ACTIONS */}
+        <button
+          className="btn big"
+          style={{ marginTop: 14 }}
+          onClick={onStart}
+          disabled={!canStart}
+          title={!canStart ? "Compila tutti i nomi per partire" : ""}
+        >
+          Avvia la cena 🍷
+        </button>
+
+        <button className="btn btn-secondary" style={{ marginTop: 10 }} onClick={onBack}>
+          ← Torna indietro
+        </button>
       </div>
+    </div>
+  );
+}
+
+function VoteScreen({
+  match,
+  onUpdateMatch,
+  onFinish,
+  fx,
+}) {
+  const restaurants = match.restaurantNames;
+  const players = match.playerNames;
+
+  const [scores, setScores] = useState({ cibo: 5, servizio: 5, location: 5, conto: 5 });
+  const [wantBonus, setWantBonus] = useState(false);
+
+  // riallinea (quando cambi votante/ristorante)
+  useEffect(() => {
+    setScores({ cibo: 5, servizio: 5, location: 5, conto: 5 });
+    setWantBonus(false);
+  }, [match.progress?.voterIndex, match.progress?.restaurantIndex]);
+
+  const voterIndex = match.progress?.voterIndex ?? 0;
+  const restaurantIndex = match.progress?.restaurantIndex ?? 0;
+
+  const totalBase = scores.cibo + scores.servizio + scores.location + scores.conto;
+
+  const bonusUsedBy = match.bonusUsedBy || {};
+  const bonusAlreadyUsed = !!bonusUsedBy[String(voterIndex)];
+  const canUseBonusThisVote = match.bonusEnabled && !bonusAlreadyUsed;
+
+  const totalFinal = totalBase + (canUseBonusThisVote && wantBonus ? 5 : 0);
+
+  const totalVotesNeeded = players.length * restaurants.length;
+  const votesDone = (match.votes || []).length;
+
+  const slider = (label, key) => (
+    <div style={{ marginTop: 10 }}>
+      <label className="muted">
+        {label}: <strong style={{ color: "#111" }}>{scores[key]}</strong>
+      </label>
       <input
-        className="slider"
         type="range"
         min={0}
         max={10}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        value={scores[key]}
+        onChange={(e) => setScores((s) => ({ ...s, [key]: Number(e.target.value) }))}
       />
     </div>
   );
-}
 
-function StudioOverlay({ show }) {
-  return (
-    <div className={`studio ${show ? "studio--show" : ""}`}>
-      <div className="studioGlow a" />
-      <div className="studioGlow b" />
-      <div className="studioGlow c" />
-      <div className="studioNoise" />
-    </div>
-  );
-}
+  const submit = async () => {
+    fx.play("tap.mp3", 0.7);
 
-/* =========================
-   Modes
-========================= */
-const MODES = [
-  {
-    key: "CLASSICA",
-    title: "CLASSICA",
-    subtitle: "Come lo show TV",
-    desc: "4 partecipanti • 4 ristoranti • regole fisse",
-  },
-  {
-    key: "PERSONALIZZATA",
-    title: "PERSONALIZZATA",
-    subtitle: "Fai tu le regole",
-    desc: "2–8 partecipanti • 2–8 ristoranti • totale libertà",
-  },
-  {
-    key: "ONE_SHOT",
-    title: "ONE SHOT",
-    subtitle: "Un solo ristorante",
-    desc: "2–8 partecipanti • 1 ristorante • giro secco",
-  },
-];
+    const vote = {
+      voterIndex,
+      voterName: players[voterIndex],
+      restaurantIndex,
+      restaurantName: restaurants[restaurantIndex],
+      scores,
+      total: totalFinal,
+      bonusApplied: !!(canUseBonusThisVote && wantBonus),
+      createdAtISO: nowIso(),
+    };
 
-/* =========================
-   Firestore: create / update
-========================= */
-async function createNewMatch({ user, mode }) {
-  // prova più volte per evitare collisioni codice
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const code = genCode(6);
-    const ref = matchRef(code);
-    const exists = await getDoc(ref);
-    if (exists.exists()) continue;
+    const nextVotes = [...(match.votes || []), vote];
 
-    let participantsCount = 4;
-    let restaurantsCount = 4;
+    // avanzamento: tutti votano tutti i ristoranti
+    let nextVoter = voterIndex;
+    let nextRestaurant = restaurantIndex + 1;
 
-    if (mode === "CLASSICA") {
-      participantsCount = 4;
-      restaurantsCount = 4;
-    } else if (mode === "PERSONALIZZATA") {
-      participantsCount = 4;
-      restaurantsCount = 4;
-    } else if (mode === "ONE_SHOT") {
-      participantsCount = 4;
-      restaurantsCount = 1;
+    if (nextRestaurant >= restaurants.length) {
+      nextRestaurant = 0;
+      nextVoter += 1;
     }
 
-    const restaurantNames = ensureSize(
-      defaultsRestaurants(),
-      restaurantsCount,
-      (i) => `Ristorante ${i + 1}`
-    );
+    const finished = nextVoter >= players.length;
 
-    const participantNames = ensureSize(
-      defaultsPlayers(),
-      participantsCount,
-      (i) => `Giocatore ${i + 1}`
-    );
+    const nextBonusUsedBy = { ...(match.bonusUsedBy || {}) };
+    if (vote.bonusApplied) nextBonusUsedBy[String(voterIndex)] = true;
 
-    const payload = {
-      app: APP_NAME,
-      build: BUILD,
-      version: 1,
-      code,
-      ownerUid: user.uid,
-      ownerName: user.displayName || "Host",
-      createdAt: serverTimestamp(),
+    const nextMatch = {
+      ...match,
+      votes: nextVotes,
+      bonusUsedBy: nextBonusUsedBy,
+      progress: finished
+        ? { voterIndex, restaurantIndex } // non importa, finito
+        : { voterIndex: nextVoter, restaurantIndex: nextRestaurant },
       updatedAt: serverTimestamp(),
-      settings: {
-        mode,
-        participantsCount,
-        restaurantsCount,
-        bonusEnabled: true,
-        musicEnabled: false,
-        restaurantNames,
-        participantNames,
-      },
-      state: {
-        phase: "setup", // setup | voting | reveal | ranking
-        pIndex: 0,
-        rIndex: 0,
-        bonusUsedByP: {}, // { p0:true }
-        votesByP: {}, // { p0:{ r0:{...vote} } }
-        finishedAt: null,
-      },
     };
 
-    await setDoc(ref, payload);
-    localStorage.setItem(LS_LAST_CODE, code);
-    return code;
-  }
+    // salva/riprendi: aggiorniamo Firestore ad ogni voto
+    await onUpdateMatch(nextMatch);
 
-  throw new Error("Impossibile generare un codice partita (collisioni).");
-}
+    if (finished) onFinish(nextMatch);
+  };
 
-async function updateMatch(code, partial) {
-  await updateDoc(matchRef(code), { ...partial, updatedAt: serverTimestamp() });
-}
-
-/* =========================
-   App
-========================= */
-export default function App() {
-  const { play } = useSfx();
-
-  // auth
-  const [authReady, setAuthReady] = useState(false);
-  const [user, setUser] = useState(null);
-  const provider = useMemo(() => {
-    const p = new GoogleAuthProvider();
-    p.setCustomParameters({ prompt: "select_account" });
-    return p;
-  }, []);
-
-  // navigation
-  const [screen, setScreen] = useState("home"); // home | mode | setup | vote | reveal | ranking
-  const [toast, setToast] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  // match loading (NO auto-resume!)
-  const [code, setCode] = useState("");
-  const [lastCode, setLastCode] = useState(localStorage.getItem(LS_LAST_CODE) || "");
-  const [joinInput, setJoinInput] = useState("");
-
-  // match data
-  const [match, setMatch] = useState(null);
-
-  // local-only reveal UI
-  const [revealStep, setRevealStep] = useState(0);
-  const [revealRunning, setRevealRunning] = useState(false);
-
-  // music
-  const [musicOn, setMusicOn] = useState(false);
-
-  // auth listener
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u || null);
-      setAuthReady(true);
-    });
-    return () => unsub();
-  }, []);
-
-  // subscribe match only if user + code selected
-  useEffect(() => {
-    if (!user || !code) {
-      setMatch(null);
-      return;
-    }
-
-    const unsub = onSnapshot(
-      matchRef(code),
-      (snap) => {
-        if (!snap.exists()) {
-          setToast("Partita non trovata. Controlla il codice.");
-          setMatch(null);
-          return;
-        }
-        const data = snap.data();
-        setMatch(data);
-        setMusicOn(!!data?.settings?.musicEnabled);
-      },
-      (err) => {
-        console.error("Firestore onSnapshot error:", err);
-        setToast("Errore Firestore: permessi/connessione.");
-      }
-    );
-
-    return () => unsub();
-  }, [user, code]);
-
-  // toast auto hide
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(""), 4500);
-    return () => clearTimeout(t);
-  }, [toast]);
-
-  // auto screen by phase when match is loaded
-  useEffect(() => {
-    if (!match) return;
-    const ph = match?.state?.phase;
-    if (!ph) return;
-    if (ph === "setup") setScreen("setup");
-    if (ph === "voting") setScreen("vote");
-    if (ph === "reveal") setScreen("reveal");
-    if (ph === "ranking") setScreen("ranking");
-  }, [match]);
-
-  const settings = match?.settings;
-  const state = match?.state;
-
-  const mode = settings?.mode || "PERSONALIZZATA";
-  const participantsCount = settings?.participantsCount || 0;
-  const restaurantsCount = settings?.restaurantsCount || 0;
-
-  const participantNames = ensureSize(
-    settings?.participantNames || [],
-    participantsCount,
-    (i) => `Giocatore ${i + 1}`
-  );
-
-  const restaurantNames = ensureSize(
-    settings?.restaurantNames || [],
-    restaurantsCount,
-    (i) => `Ristorante ${i + 1}`
-  );
-
-  const bonusEnabled = !!settings?.bonusEnabled;
-  const bonusUsedByP = state?.bonusUsedByP || {};
-  const votesByP = state?.votesByP || {};
-
-  const pIndex = state?.pIndex || 0;
-  const rIndex = state?.rIndex || 0;
-
-  const currentPlayer = participantNames[pIndex] || `Giocatore ${pIndex + 1}`;
-  const currentRestaurant = restaurantNames[rIndex] || `Ristorante ${rIndex + 1}`;
-
-  const ranking = useMemo(() => {
-    if (!match) return [];
-    const totals = Array(restaurantsCount).fill(0);
-
-    for (let pi = 0; pi < participantsCount; pi++) {
-      const pk = `p${pi}`;
-      const pv = votesByP?.[pk] || {};
-      for (let ri = 0; ri < restaurantsCount; ri++) {
-        const rk = `r${ri}`;
-        totals[ri] += sumVote(pv?.[rk]);
-      }
-    }
-
-    const list = restaurantNames.map((name, i) => ({
-      name,
-      score: totals[i] || 0,
-    }));
-
-    list.sort((a, b) => b.score - a.score);
-    return list;
-  }, [match, restaurantsCount, participantsCount, votesByP, restaurantNames]);
-
-  // ======= actions
-  async function doLogin() {
-    try {
-      setBusy(true);
-      await signInWithPopup(auth, provider);
-      play("tap.mp3", 0.5);
-    } catch (e) {
-      console.error(e);
-      setToast("Login non riuscito (popup/cookie).");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function doLogout() {
-    try {
-      setBusy(true);
-      await signOut(auth);
-      setCode("");
-      setMatch(null);
-      setScreen("home");
-    } catch (e) {
-      console.error(e);
-      setToast("Logout non riuscito.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function startNewMatch(selectedMode) {
-    if (!user) return;
-    try {
-      setBusy(true);
-      play("tap.mp3", 0.5);
-      const newCode = await createNewMatch({ user, mode: selectedMode });
-      setCode(newCode);
-      setLastCode(newCode);
-      setToast(`Partita creata! Codice: ${newCode}`);
-      setScreen("setup");
-    } catch (e) {
-      console.error(e);
-      setToast("Errore creando la partita (Firestore/permessi).");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function resumeLastMatch() {
-    if (!user) return;
-    const last = localStorage.getItem(LS_LAST_CODE) || "";
-    if (!last) {
-      setToast("Nessuna partita salvata in questo browser.");
-      return;
-    }
-    setCode(last);
-    setLastCode(last);
-    setToast("Partita ripresa.");
-  }
-
-  async function joinByCode() {
-    if (!user) return;
-    const c = (joinInput || "").trim().toUpperCase();
-    if (!c) return;
-
-    try {
-      setBusy(true);
-      const snap = await getDoc(matchRef(c));
-      if (!snap.exists()) {
-        setToast("Codice non valido (partita non trovata).");
-        return;
-      }
-      localStorage.setItem(LS_LAST_CODE, c);
-      setLastCode(c);
-      setCode(c);
-      setToast("Partita caricata.");
-      setScreen("home");
-    } catch (e) {
-      console.error(e);
-      setToast("Errore caricando la partita.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveSetup(nextSettings) {
-    if (!code) return;
-    try {
-      await updateMatch(code, { settings: nextSettings });
-      play("tap.mp3", 0.35);
-    } catch (e) {
-      console.error(e);
-      setToast("Errore nel salvataggio setup.");
-    }
-  }
-
-  function canStartDinner() {
-    if (!settings) return false;
-    const rn = (settings.restaurantNames || []).slice(0, settings.restaurantsCount);
-    const pn = (settings.participantNames || []).slice(0, settings.participantsCount);
-
-    const okR = rn.every((x) => (x || "").trim().length > 0);
-    const okP = pn.every((x) => (x || "").trim().length > 0);
-    return okR && okP;
-  }
-
-  async function goVoting() {
-    if (!match || !code) return;
-    if (!canStartDinner()) {
-      setToast("Inserisci tutti i nomi prima di avviare.");
-      return;
-    }
-
-    try {
-      setBusy(true);
-      await updateMatch(code, {
-        state: {
-          ...match.state,
-          phase: "voting",
-          pIndex: 0,
-          rIndex: 0,
-        },
-      });
-      play("confirm.mp3", 0.7);
-      setScreen("vote");
-    } catch (e) {
-      console.error(e);
-      setToast("Non riesco ad avviare la cena (Firestore/permessi).");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function resetMatchToSetup() {
-    if (!match || !code) return;
-    try {
-      setBusy(true);
-      await updateMatch(code, {
-        state: {
-          ...match.state,
-          phase: "setup",
-          pIndex: 0,
-          rIndex: 0,
-          bonusUsedByP: {},
-          votesByP: {},
-          finishedAt: null,
-        },
-      });
-      setRevealStep(0);
-      setRevealRunning(false);
-      play("tap.mp3", 0.5);
-      setScreen("setup");
-      setToast("Partita resettata.");
-    } catch (e) {
-      console.error(e);
-      setToast("Errore resettando la partita.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function submitVote(vote) {
-    if (!match || !code) return;
-
-    const s = match.settings;
-    const st = match.state;
-
-    const pc = s.participantsCount;
-    const rc = s.restaurantsCount;
-
-    const pk = `p${st.pIndex}`;
-    const rk = `r${st.rIndex}`;
-
-    const nextVotesByP = { ...(st.votesByP || {}) };
-    if (!nextVotesByP[pk]) nextVotesByP[pk] = {};
-    nextVotesByP[pk][rk] = vote;
-
-    const nextBonusUsedByP = { ...(st.bonusUsedByP || {}) };
-    if (vote.bonusApplied) nextBonusUsedByP[pk] = true;
-
-    let nextP = st.pIndex;
-    let nextR = st.rIndex;
-
-    if (s.mode === "ONE_SHOT") {
-      nextP = st.pIndex + 1;
-      nextR = 0;
-    } else {
-      nextR = st.rIndex + 1;
-      if (nextR >= rc) {
-        nextR = 0;
-        nextP = st.pIndex + 1;
-      }
-    }
-
-    const finished = nextP >= pc;
-
-    const nextState = {
-      ...st,
-      votesByP: nextVotesByP,
-      bonusUsedByP: nextBonusUsedByP,
-      pIndex: finished ? st.pIndex : nextP,
-      rIndex: finished ? st.rIndex : nextR,
-      phase: finished ? "reveal" : "voting",
-      finishedAt: finished ? serverTimestamp() : st.finishedAt || null,
-    };
-
-    try {
-      await updateMatch(code, { state: nextState });
-      play("tap.mp3", 0.45);
-      if (finished) setScreen("reveal");
-    } catch (e) {
-      console.error(e);
-      setToast("Errore salvando il voto.");
-    }
-  }
-
-  async function startReveal() {
-    if (revealRunning) return;
-    setRevealRunning(true);
-    setRevealStep(0);
-
-    await play("drumroll.mp3", 0.55);
-
-    setRevealStep(1);
-    setTimeout(() => setRevealStep(2), 900);
-    setTimeout(() => setRevealStep(3), 1800);
-    setTimeout(() => setRevealStep(4), 2700);
-
-    setTimeout(async () => {
-      try {
-        await updateMatch(code, { state: { ...match.state, phase: "ranking" } });
-      } catch {
-        // ok
-      }
-      setScreen("ranking");
-      play("winners.mp3", 0.65);
-    }, 3500);
-  }
-
-  // ======= vote form state (local)
-  const [cibo, setCibo] = useState(5);
-  const [servizio, setServizio] = useState(5);
-  const [location, setLocation] = useState(5);
-  const [conto, setConto] = useState(5);
-  const [useBonus, setUseBonus] = useState(false);
-
-  useEffect(() => {
-    // reset sliders when cursor changes
-    if (screen !== "vote") return;
-    setCibo(5);
-    setServizio(5);
-    setLocation(5);
-    setConto(5);
-    setUseBonus(false);
-  }, [screen, pIndex, rIndex]);
-
-  // ======= render guards
-  if (!authReady) {
-    return (
-      <div className="app">
-        <div className="shell">
-          <div className="panel center">
-            <div className="spinner" />
-            <div className="muted">Caricamento…</div>
+  return (
+    <div className="screen vote" style={{ alignItems: "flex-start" }}>
+      <div className="card" style={{ width: "100%", maxWidth: 560 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+          <div>
+            <h2 className="h2" style={{ marginBottom: 6 }}>
+              Vota: {restaurants[restaurantIndex]}
+            </h2>
+            <p className="muted" style={{ marginBottom: 0 }}>
+              Votante: <strong style={{ color: "#111" }}>{players[voterIndex]}</strong>
+            </p>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <p className="muted" style={{ marginBottom: 0 }}>
+              Voti: <strong style={{ color: "#111" }}>{votesDone}/{totalVotesNeeded}</strong>
+            </p>
+            <p className="muted" style={{ marginBottom: 0 }}>
+              Codice: <strong style={{ color: "#111" }}>{match.matchCode}</strong>
+            </p>
           </div>
         </div>
-      </div>
-    );
-  }
 
-  return (
-    <div className="app">
-      <MusicPlayer enabled={musicOn} />
-      <StudioOverlay show={screen === "reveal" || screen === "ranking"} />
+        {slider("🍝 Cibo", "cibo")}
+        {slider("🛎 Servizio", "servizio")}
+        {slider("🏠 Location", "location")}
+        {slider("💸 Conto", "conto")}
 
-      <div className="shell">
-        <header className="topbar">
-          <div className="brand">
-            <div className="logo">🍴</div>
-            <div className="brandText">
-              <div className="title">{APP_NAME}</div>
-              <div className="sub">
-                <Pill>BUILD: {BUILD}</Pill>
-                {code ? <Pill>CODICE: {code}</Pill> : <Pill>NESSUNA PARTITA</Pill>}
-              </div>
-            </div>
+        <div style={{ marginTop: 12 }}>
+          <p style={{ margin: 0 }}>
+            Totale: <strong>{totalFinal}</strong>{" "}
+            <span className="muted">
+              (base {totalBase}{match.bonusEnabled ? ", bonus +5 opzionale" : ""})
+            </span>
+          </p>
+        </div>
+
+        {match.bonusEnabled && (
+          <div style={{ marginTop: 10 }}>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              onClick={() => {
+                if (!canUseBonusThisVote) return;
+                setWantBonus((x) => !x);
+                fx.play("tap.mp3", 0.5);
+              }}
+              disabled={!canUseBonusThisVote}
+              title={!canUseBonusThisVote ? "Bonus già usato da questo votante" : ""}
+            >
+              {canUseBonusThisVote
+                ? wantBonus
+                  ? "✅ Bonus +5 assegnato"
+                  : "Usa Bonus +5 (una volta)"
+                : "Bonus già usato"}
+            </button>
           </div>
-
-          <div className="topActions">
-            {user ? (
-              <>
-                <div className="userChip" title={user.email || ""}>
-                  <span className="userDot" />
-                  <span className="userName">{user.displayName || "Utente"}</span>
-                </div>
-                <button className="btn ghost" onClick={doLogout} disabled={busy}>
-                  Esci
-                </button>
-              </>
-            ) : (
-              <button className="btn" onClick={doLogin} disabled={busy}>
-                Accedi con Google
-              </button>
-            )}
-          </div>
-        </header>
-
-        {toast ? <div className="toast">{toast}</div> : null}
-
-        {/* HOME */}
-        {screen === "home" && (
-          <main className="panel">
-            {!user ? (
-              <div className="centerStack">
-                <h2 className="h2">Benvenuto in studio.</h2>
-                <p className="muted">Per salvare e riprendere partite serve l’accesso Google.</p>
-                <button className="btn big" onClick={doLogin} disabled={busy}>
-                  Accedi con Google
-                </button>
-              </div>
-            ) : (
-              <>
-                <div className="hero">
-                  <h2 className="h2">Pronti a giudicare? 🍝</h2>
-                  <p className="muted">
-                    Ora la partita NON si riprende da sola: scegli tu “Inizia” o “Riprendi”.
-                  </p>
-                </div>
-
-                <div className="grid2">
-                  <button className="btn big" onClick={() => setScreen("mode")} disabled={busy}>
-                    Inizia una partita
-                  </button>
-
-                  <button
-                    className="btn big ghost"
-                    onClick={resumeLastMatch}
-                    disabled={!lastCode || busy}
-                  >
-                    Riprendi partita
-                  </button>
-                </div>
-
-                <div className="divider" />
-
-                <div className="joinRow">
-                  <input
-                    className="input"
-                    value={joinInput}
-                    onChange={(e) => setJoinInput(e.target.value.toUpperCase())}
-                    placeholder="Entra con codice (es. AB12CD)"
-                  />
-                  <button className="btn" onClick={joinByCode} disabled={busy}>
-                    Entra
-                  </button>
-                </div>
-
-                {match && code ? (
-                  <div className="miniCard">
-                    <div className="miniRow">
-                      <div>
-                        <div className="miniTitle">Partita caricata</div>
-                        <div className="muted">
-                          Modalità: <strong>{mode}</strong> • {participantsCount} partecipanti •{" "}
-                          {restaurantsCount} ristoranti
-                        </div>
-                      </div>
-                      <div className="miniActions">
-                        <button className="btn" onClick={() => setScreen("setup")}>
-                          Vai al setup
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="muted small" style={{ marginTop: 10 }}>
-                    Nessuna partita caricata: premi “Riprendi” o entra con un codice.
-                  </div>
-                )}
-              </>
-            )}
-          </main>
         )}
 
-        {/* MODE PICKER */}
-        {screen === "mode" && (
-          <main className="panel">
-            <div className="hero">
-              <h2 className="h2">Scegli la modalità</h2>
-              <p className="muted">Tre stili, stessa cattiveria… ehm, “oggettività”.</p>
-            </div>
-
-            <div className="modeGrid">
-              {MODES.map((m) => (
-                <button
-                  key={m.key}
-                  className="card"
-                  type="button"
-                  onClick={() => startNewMatch(m.key)}
-                  disabled={busy}
-                >
-                  <div className="cardTop">
-                    <div className="cardTitle">{m.title}</div>
-                    <div className="cardSubtitle">{m.subtitle}</div>
-                  </div>
-                  <div className="cardDesc">{m.desc}</div>
-                </button>
-              ))}
-            </div>
-
-            <div className="rowRight">
-              <button className="btn ghost" onClick={() => setScreen("home")}>
-                ← Indietro
-              </button>
-            </div>
-          </main>
-        )}
-
-        {/* SETUP */}
-        {screen === "setup" && (
-          <main className="panel">
-            {!match ? (
-              <div className="centerStack">
-                <div className="muted">Carico la partita…</div>
-              </div>
-            ) : (
-              <>
-                <div className="hero">
-                  <h2 className="h2">Setup partita</h2>
-                  <p className="muted">Scegli tutto prima di iniziare (poi si spadella).</p>
-                </div>
-
-                <div className="setupGrid">
-                  <div className="setupCard">
-                    <div className="setupTitle">Impostazioni</div>
-                    <div className="muted small">Modalità: <strong>{mode}</strong></div>
-
-                    {/* Conteggi */}
-                    {mode === "CLASSICA" ? (
-                      <div className="muted small" style={{ marginTop: 8 }}>
-                        CLASSICA: 4 partecipanti e 4 ristoranti sono fissi.
-                      </div>
-                    ) : (
-                      <>
-                        <Slider
-                          label="Partecipanti"
-                          value={participantsCount}
-                          min={2}
-                          max={8}
-                          onChange={(v) => {
-                            const next = {
-                              ...settings,
-                              participantsCount: clamp(v, 2, 8),
-                              participantNames: ensureSize(
-                                settings.participantNames || [],
-                                clamp(v, 2, 8),
-                                (i) => defaultsPlayers()[i] || `Giocatore ${i + 1}`
-                              ),
-                            };
-                            saveSetup(next);
-                          }}
-                        />
-
-                        {mode === "ONE_SHOT" ? (
-                          <div className="muted small">
-                            ONE SHOT: ristorante unico (1).
-                          </div>
-                        ) : (
-                          <Slider
-                            label="Ristoranti"
-                            value={restaurantsCount}
-                            min={2}
-                            max={8}
-                            onChange={(v) => {
-                              const next = {
-                                ...settings,
-                                restaurantsCount: clamp(v, 2, 8),
-                                restaurantNames: ensureSize(
-                                  settings.restaurantNames || [],
-                                  clamp(v, 2, 8),
-                                  (i) => defaultsRestaurants()[i] || `Ristorante ${i + 1}`
-                                ),
-                              };
-                              saveSetup(next);
-                            }}
-                          />
-                        )}
-                      </>
-                    )}
-
-                    {/* Toggles */}
-                    <label className="checkRow">
-                      <input
-                        type="checkbox"
-                        checked={!!settings.bonusEnabled}
-                        onChange={(e) => {
-                          const next = { ...settings, bonusEnabled: e.target.checked };
-                          saveSetup(next);
-                        }}
-                      />
-                      Bonus +5 (facoltativo)
-                    </label>
-
-                    <label className="checkRow">
-                      <input
-                        type="checkbox"
-                        checked={!!settings.musicEnabled}
-                        onChange={(e) => {
-                          const next = { ...settings, musicEnabled: e.target.checked };
-                          saveSetup(next);
-                        }}
-                      />
-                      Musica (attivabile)
-                    </label>
-
-                    <div className="divider" />
-
-                    <button
-                      className="btn big"
-                      onClick={goVoting}
-                      disabled={!canStartDinner() || busy}
-                    >
-                      Avvia la cena 🍷
-                    </button>
-
-                    <button className="btn ghost" onClick={resetMatchToSetup} disabled={busy}>
-                      Reset partita
-                    </button>
-
-                    <button className="btn ghost" onClick={() => setScreen("home")}>
-                      ← Torna Home
-                    </button>
-                  </div>
-
-                  <div className="setupCard">
-                    <div className="setupTitle">Nomi partecipanti</div>
-                    <div className="muted small">Tutti devono avere un nome (anche buffo).</div>
-
-                    <div className="list">
-                      {participantNames.map((name, i) => (
-                        <input
-                          key={i}
-                          className="input"
-                          value={name}
-                          onChange={(e) => {
-                            const pn = [...participantNames];
-                            pn[i] = e.target.value;
-                            const next = { ...settings, participantNames: pn };
-                            saveSetup(next);
-                          }}
-                          placeholder={`Giocatore ${i + 1}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="setupCard">
-                    <div className="setupTitle">Nomi ristoranti</div>
-                    <div className="muted small">
-                      {mode === "ONE_SHOT"
-                        ? "ONE SHOT: un solo ristorante."
-                        : "Dai nomi memorabili (o pericolosi)."}
-                    </div>
-
-                    <div className="list">
-                      {restaurantNames.map((name, i) => (
-                        <input
-                          key={i}
-                          className="input"
-                          value={name}
-                          onChange={(e) => {
-                            const rn = [...restaurantNames];
-                            rn[i] = e.target.value;
-                            const next = { ...settings, restaurantNames: rn };
-                            saveSetup(next);
-                          }}
-                          placeholder={`Ristorante ${i + 1}`}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-          </main>
-        )}
-
-        {/* VOTE */}
-        {screen === "vote" && (
-          <main className="panel">
-            {!match ? (
-              <div className="centerStack">
-                <div className="muted">Carico…</div>
-              </div>
-            ) : (
-              <>
-                <div className="hero">
-                  <h2 className="h2">Votazione</h2>
-                  <p className="muted">
-                    <strong>{currentPlayer}</strong> valuta{" "}
-                    <strong>{currentRestaurant}</strong>
-                  </p>
-
-                  <div className="muted small">
-                    {mode === "ONE_SHOT" ? (
-                      <>Giocatore {pIndex + 1} / {participantsCount}</>
-                    ) : (
-                      <>
-                        Giocatore {pIndex + 1} / {participantsCount} • Ristorante {rIndex + 1} / {restaurantsCount}
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="voteGrid">
-                  <div className="setupCard">
-                    <div className="setupTitle">Voti</div>
-
-                    <ScoreSlider label="🍝 Cibo" value={cibo} onChange={setCibo} />
-                    <ScoreSlider label="🛎️ Servizio" value={servizio} onChange={setServizio} />
-                    <ScoreSlider label="🏠 Location" value={location} onChange={setLocation} />
-                    <ScoreSlider label="💸 Conto" value={conto} onChange={setConto} />
-
-                    <div className="divider" />
-
-                    <div className="muted small">
-                      Totale: <strong>{cibo + servizio + location + conto + (useBonus ? 5 : 0)}</strong>
-                      {useBonus ? " (bonus incluso)" : ""}
-                    </div>
-
-                    {bonusEnabled ? (
-                      <label className="checkRow">
-                        <input
-                          type="checkbox"
-                          checked={useBonus}
-                          disabled={!!bonusUsedByP[`p${pIndex}`]}
-                          onChange={(e) => setUseBonus(e.target.checked)}
-                        />
-                        Bonus +5 (solo 1 volta per giocatore)
-                      </label>
-                    ) : (
-                      <div className="muted small">Bonus disattivato.</div>
-                    )}
-
-                    <button
-                      className="btn big"
-                      onClick={() => {
-                        const vote = {
-                          cibo,
-                          servizio,
-                          location,
-                          conto,
-                          bonusApplied: bonusEnabled && useBonus && !bonusUsedByP[`p${pIndex}`],
-                          at: nowISO(),
-                          pIndex,
-                          rIndex,
-                        };
-                        submitVote(vote);
-                      }}
-                    >
-                      Conferma voto
-                    </button>
-
-                    <button className="btn ghost" onClick={() => setScreen("setup")}>
-                      ← Torna Setup
-                    </button>
-                  </div>
-                </div>
-              </>
-            )}
-          </main>
-        )}
-
-        {/* REVEAL */}
-        {screen === "reveal" && (
-          <main className="panel">
-            <div className="hero">
-              <h2 className="h2">Studio TV</h2>
-              <p className="muted">Si apre la busta… (quasi).</p>
-            </div>
-
-            <div className="revealCard">
-              <div className={`revealLine ${revealStep >= 1 ? "on" : ""}`}>🎥 Cam 1 pronta</div>
-              <div className={`revealLine ${revealStep >= 2 ? "on" : ""}`}>💡 Luci studio… ON</div>
-              <div className={`revealLine ${revealStep >= 3 ? "on" : ""}`}>🥁 Rullo di tamburi…</div>
-              <div className={`revealLine ${revealStep >= 4 ? "on" : ""}`}>📣 “E ORA… CLASSIFICA!”</div>
-
-              <button className="btn big" onClick={startReveal} disabled={revealRunning}>
-                Reveal classifica
-              </button>
-
-              <button className="btn ghost" onClick={() => setScreen("setup")}>
-                ← Torna Setup
-              </button>
-            </div>
-          </main>
-        )}
-
-        {/* RANKING */}
-        {screen === "ranking" && (
-          <main className="panel">
-            <div className="hero">
-              <h2 className="h2">🏆 Classifica finale</h2>
-              <p className="muted">Screenshot pronta 📸</p>
-            </div>
-
-            <div className="ranking">
-              {ranking.map((r, i) => (
-                <div key={r.name} className={`rankRow ${i === 0 ? "winner" : ""}`}>
-                  <div className="rankPos">{i + 1}</div>
-                  <div className="rankName">{r.name}</div>
-                  <div className="rankScore">{r.score}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid2" style={{ marginTop: 14 }}>
-              <button className="btn big" onClick={resetMatchToSetup}>
-                Nuova cena (stessa partita)
-              </button>
-              <button className="btn big ghost" onClick={() => setScreen("home")}>
-                Torna Home
-              </button>
-            </div>
-          </main>
-        )}
+        <button className="btn big" style={{ marginTop: 14 }} onClick={submit}>
+          Conferma voto
+        </button>
       </div>
     </div>
   );
 }
+
+function StudioLightsOverlay({ show }) {
+  if (!show) return null;
+  return (
+    <div
+      aria-hidden="true"
+      style={{
+        position: "fixed",
+        inset: 0,
+        pointerEvents: "none",
+        zIndex: 999,
+        background:
+          "radial-gradient(circle at 20% 20%, rgba(255,255,255,0.30), transparent 45%)," +
+          "radial-gradient(circle at 80% 30%, rgba(255,255,255,0.22), transparent 50%)," +
+          "radial-gradient(circle at 50% 90%, rgba(255,255,255,0.14), transparent 55%)",
+        mixBlendMode: "screen",
+        animation: "fpLights 2.2s ease-in-out infinite alternate",
+      }}
+    />
+  );
+}
+
+function RankingScreen({ finalMatch, onClose, fx }) {
+  const restaurants = finalMatch.restaurantNames || [];
+  const votes = finalMatch.votes || [];
+
+  const totals = useMemo(() => {
+    const arr = Array(restaurants.length).fill(0);
+    for (const v of votes) {
+      arr[v.restaurantIndex] = (arr[v.restaurantIndex] || 0) + (v.total || 0);
+    }
+    return arr;
+  }, [restaurants, votes]);
+
+  const ranking = useMemo(() => {
+    return restaurants
+      .map((name, i) => ({ name, score: totals[i] || 0 }))
+      .sort((a, b) => b.score - a.score);
+  }, [restaurants, totals]);
+
+  const [reveal, setReveal] = useState(0);
+  const [showOverlay, setShowOverlay] = useState(true);
+
+  useEffect(() => {
+    // drumroll + reveal
+    fx.play("drumroll.mp3", 0.6);
+    setReveal(0);
+    setShowOverlay(true);
+
+    const t = setInterval(() => {
+      setReveal((r) => {
+        const next = r + 1;
+        if (next >= ranking.length) {
+          clearInterval(t);
+          // winner sfx
+          fx.play("winners.mp3", 0.75);
+          // spegni overlay dopo un attimo
+          setTimeout(() => setShowOverlay(false), 1200);
+        }
+        return next;
+      });
+    }, 900);
+
+    return () => clearInterval(t);
+  }, [ranking.length]);
+
+  const winner = ranking[0]?.name || "—";
+
+  return (
+    <div className="screen ranking" style={{ alignItems: "center" }}>
+      <StudioLightsOverlay show={showOverlay} />
+      <div className="card" style={{ width: "100%", maxWidth: 560 }}>
+        <h2 className="h2">🏆 Classifica finale</h2>
+        <p className="muted">Reveal in stile studio TV… e poi screenshot 📸</p>
+
+        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+          {ranking.slice(0, reveal).map((r, idx) => (
+            <div
+              key={r.name}
+              style={{
+                padding: "12px 14px",
+                borderRadius: 16,
+                border: "1px solid rgba(0,0,0,0.14)",
+                background: "rgba(255,255,255,0.28)",
+                transform: "translateY(0)",
+                animation: "fpPop 260ms ease-out",
+              }}
+            >
+              <strong>
+                {idx + 1}. {r.name}
+              </strong>{" "}
+              <span className="muted">— {r.score}</span>
+              {idx === 0 ? (
+                <div style={{ marginTop: 6 }}>
+                  <span className="muted">Vincitore: </span>
+                  <strong>{winner}</strong> 🥳
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+
+        {reveal < ranking.length ? (
+          <p className="muted" style={{ marginTop: 12 }}>
+            …ci siamo quasi…
+          </p>
+        ) : (
+          <p className="muted" style={{ marginTop: 12 }}>
+            Screenshot pronto ✅ (su PC: Strumento di cattura / su telefono: screenshot)
+          </p>
+        )}
+
+        <button className="btn big" style={{ marginTop: 12 }} onClick={onClose}>
+          Chiudi e torna Home
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function HistoryScreen({ items, onBack }) {
+  return (
+    <div className="screen setup" style={{ alignItems: "flex-start" }}>
+      <div className="card" style={{ width: "100%", maxWidth: 560 }}>
+        <h2 className="h2">Storico vincitori</h2>
+        <p className="muted">Le ultime partite salvate sul tuo account.</p>
+
+        <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+          {items.length === 0 ? (
+            <div className="muted">Nessuna partita salvata… ancora.</div>
+          ) : (
+            items.map((m) => (
+              <div
+                key={m.id}
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 16,
+                  border: "1px solid rgba(0,0,0,0.14)",
+                  background: "rgba(255,255,255,0.28)",
+                }}
+              >
+                <div>
+                  <strong>{m.winner || "—"}</strong>{" "}
+                  <span className="muted">({m.matchCode || "—"})</span>
+                </div>
+                <div className="muted" style={{ marginTop: 4 }}>
+                  {m.createdAtISO || "—"}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        <button className="btn big" style={{ marginTop: 14 }} onClick={onBack}>
+          ← Torna Home
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================
+   APP
+========================================= */
+export default function App() {
+  const fx = useFX();
+
+  const [user, setUser] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState("");
+
+  const [screen, setScreen] = useState("home"); // home | mode | setup | vote | ranking | history
+  const [musicOn, setMusicOn] = useState(false);
+
+  const [settings, setSettings] = useState(() => ({
+    mode: "custom",
+    restaurantsCount: 4,
+    playersCount: 4,
+    bonusEnabled: true,
+    musicEnabled: false,
+    restaurantNames: ["La Bottega", "Trattoria Roma", "Osteria Bella", "Polpetta Palace"],
+    playerNames: ["Giocatore 1", "Giocatore 2", "Giocatore 3", "Giocatore 4"],
+  }));
+
+  const [activeMatch, setActiveMatch] = useState(null);
+  const [finalMatch, setFinalMatch] = useState(null);
+  const [history, setHistory] = useState([]);
+
+  // Auth init
+  useEffect(() => {
+    let unsubAuth = () => {};
+    (async () => {
+      try {
+        await setPersistence(auth, browserLocalPersistence);
+      } catch {
+        try {
+          await setPersistence(auth, browserSessionPersistence);
+        } catch {}
+      }
+      unsubAuth = onAuthStateChanged(auth, (u) => {
+        setUser(u || null);
+      });
+    })();
+
+    return () => unsubAuth();
+  }, []);
+
+  // Sync activeMatch + history when logged in
+  useEffect(() => {
+    if (!user) {
+      setActiveMatch(null);
+      setHistory([]);
+      setMusicOn(false);
+      return;
+    }
+
+    const ref = activeMatchRef(user.uid);
+    const unsub = onSnapshot(
+      ref,
+      (snap) => {
+        if (!snap.exists()) {
+          setActiveMatch(null);
+          return;
+        }
+        setActiveMatch({ id: snap.id, ...snap.data() });
+      },
+      (err) => {
+        console.log("Firestore onSnapshot error:", err);
+      }
+    );
+
+    const q = query(matchesCol(user.uid), orderBy("createdAt", "desc"), limit(20));
+    const unsub2 = onSnapshot(
+      q,
+      (snap) => {
+        const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setHistory(items);
+      },
+      () => {}
+    );
+
+    return () => {
+      unsub();
+      unsub2();
+    };
+  }, [user]);
+
+  // keep background class for optional CSS backgrounds
+  const appClass = `app bg-${screen}`;
+
+  const showToast = (msg) => {
+    setToast(msg);
+    if (!msg) return;
+    setTimeout(() => setToast(""), 2600);
+  };
+
+  const doLogin = async () => {
+    setBusy(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: "select_account" });
+
+      await signInWithPopup(auth, provider);
+      fx.play("tap.mp3", 0.6);
+      showToast("Accesso effettuato ✅");
+    } catch (e) {
+      console.log(e);
+      showToast("Login non riuscito. Riprova.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doLogout = async () => {
+    setBusy(true);
+    try {
+      await signOut(auth);
+      setScreen("home");
+      showToast("Sei uscito.");
+    } catch {
+      showToast("Errore uscita.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pickMode = (modeId) => {
+    const m = MODES[modeId] || MODES.custom;
+    setSettings((s) => {
+      const restaurantsCount = clamp(s.restaurantsCount, m.restaurantsMin, m.restaurantsMax);
+      const playersCount = clamp(s.playersCount, m.playersMin, m.playersMax);
+
+      return {
+        ...s,
+        mode: modeId,
+        restaurantsCount,
+        playersCount,
+      };
+    });
+    setScreen("setup");
+  };
+
+  const createMatch = async () => {
+    if (!user) {
+      showToast("Serve login Google per salvare la partita.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const m = MODES[settings.mode] || MODES.custom;
+
+      const restaurantsCount = clamp(settings.restaurantsCount, m.restaurantsMin, m.restaurantsMax);
+      const playersCount = clamp(settings.playersCount, m.playersMin, m.playersMax);
+
+      const matchCode = makeCode(6);
+
+      const match = {
+        build: BUILD,
+        matchCode,
+        mode: settings.mode,
+        restaurantsCount,
+        playersCount,
+        bonusEnabled: !!settings.bonusEnabled,
+        musicEnabled: !!settings.musicEnabled,
+        restaurantNames: settings.restaurantNames.slice(0, restaurantsCount),
+        playerNames: settings.playerNames.slice(0, playersCount),
+        bonusUsedBy: {},
+
+        votes: [],
+
+        progress: { voterIndex: 0, restaurantIndex: 0 },
+
+        createdAt: serverTimestamp(),
+        createdAtISO: nowIso(),
+        updatedAt: serverTimestamp(),
+      };
+
+      await setDoc(activeMatchRef(user.uid), match, { merge: false });
+
+      setMusicOn(!!settings.musicEnabled);
+      fx.play("tap.mp3", 0.6);
+
+      setScreen("vote");
+      showToast("Partita creata ✅");
+    } catch (e) {
+      console.log("createMatch error:", e);
+      showToast("Errore creando la partita. Controlla Firestore Rules.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const updateActiveMatch = async (nextMatch) => {
+    if (!user) return;
+    // nextMatch contiene serverTimestamp in updatedAt, ma potrebbe anche arrivare come dato già “materializzato”
+    try {
+      await setDoc(activeMatchRef(user.uid), nextMatch, { merge: true });
+    } catch (e) {
+      console.log("update match error:", e);
+      showToast("Errore salvataggio. Riprova.");
+      throw e;
+    }
+  };
+
+  const finishMatch = async (doneMatch) => {
+    // salva nello storico + chiude active
+    if (!user) return;
+    try {
+      const restaurants = doneMatch.restaurantNames || [];
+      const votes = doneMatch.votes || [];
+      const totals = Array(restaurants.length).fill(0);
+      for (const v of votes) totals[v.restaurantIndex] = (totals[v.restaurantIndex] || 0) + (v.total || 0);
+
+      const ranking = restaurants
+        .map((name, i) => ({ name, score: totals[i] || 0 }))
+        .sort((a, b) => b.score - a.score);
+
+      const winner = ranking[0]?.name || "—";
+
+      await addDoc(matchesCol(user.uid), {
+        build: BUILD,
+        matchCode: doneMatch.matchCode,
+        mode: doneMatch.mode,
+        restaurantsCount: doneMatch.restaurantsCount,
+        playersCount: doneMatch.playersCount,
+        bonusEnabled: doneMatch.bonusEnabled,
+        musicEnabled: doneMatch.musicEnabled,
+        restaurantNames: doneMatch.restaurantNames,
+        playerNames: doneMatch.playerNames,
+        votesCount: votes.length,
+        winner,
+        ranking, // array di oggetti OK (non nested arrays)
+        createdAt: serverTimestamp(),
+        createdAtISO: doneMatch.createdAtISO || nowIso(),
+      });
+
+      await deleteDoc(activeMatchRef(user.uid));
+    } catch (e) {
+      console.log("finishMatch error:", e);
+      // anche se fallisce, mostriamo comunque la classifica
+    }
+  };
+
+  const onFinishFromVote = async (doneMatch) => {
+    setFinalMatch(doneMatch);
+    setScreen("ranking");
+    await finishMatch(doneMatch);
+  };
+
+  const resumeMatch = async () => {
+    if (!user) return;
+    try {
+      const snap = await getDoc(activeMatchRef(user.uid));
+      if (!snap.exists()) {
+        showToast("Nessuna partita da riprendere.");
+        return;
+      }
+      const m = { id: snap.id, ...snap.data() };
+      setActiveMatch(m);
+      setMusicOn(!!m.musicEnabled);
+      setScreen("vote");
+      showToast("Partita ripresa ✅");
+    } catch {
+      showToast("Errore ripresa partita.");
+    }
+  };
+
+  // HOME content wrapper (CENTRATO)
+  const Home = () => (
+    <div className="screen home">
+      <div className="card home-card">
+        <main className="panel">
+          {!user ? (
+            <div className="centerStack">
+              <img className="logo" src="/brand/logo.png" alt="Forchette&Polpette" />
+              <h2 className="h2">Benvenuto in studio.</h2>
+              <p className="muted">Per salvare e riprendere partite serve l’accesso Google.</p>
+
+              <button className="btn big" onClick={doLogin} disabled={busy}>
+                Accedi con Google
+              </button>
+
+              <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>
+                BUILD: {BUILD}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="hero">
+                <img className="logo" src="/brand/logo.png" alt="Forchette&Polpette" />
+                <h2 className="h2">Pronti a giudicare? 🍝</h2>
+                <p className="muted">Scegli tu: “Inizia” o “Riprendi”.</p>
+              </div>
+
+              <div style={{ display: "grid", gap: 10, marginTop: 12 }}>
+                <button className="btn big" onClick={() => setScreen("mode")} disabled={busy}>
+                  Inizia una partita
+                </button>
+
+                <button
+                  className="btn big"
+                  onClick={resumeMatch}
+                  disabled={busy || !activeMatch}
+                  title={!activeMatch ? "Nessuna partita attiva trovata" : ""}
+                >
+                  Riprendi partita
+                </button>
+
+                <button className="btn btn-secondary" onClick={() => setScreen("history")}>
+                  Storico vincitori
+                </button>
+
+                <button className="btn btn-secondary" onClick={doLogout} disabled={busy}>
+                  Esci
+                </button>
+              </div>
+
+              <div className="muted" style={{ marginTop: 10, fontSize: 12 }}>
+                BUILD: {BUILD}
+              </div>
+            </>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={appClass}>
+      <MusicPlayer enabled={musicOn} />
+
+      {toast ? <div className="toast">{toast}</div> : null}
+
+      {/* HOME */}
+      {screen === "home" && <Home />}
+
+      {/* MODES */}
+      {screen === "mode" && (
+        <ModeSelect
+          onPick={pickMode}
+          onBack={() => setScreen("home")}
+        />
+      )}
+
+      {/* SETUP */}
+      {screen === "setup" && (
+        <SetupScreen
+          settings={settings}
+          setSettings={setSettings}
+          onStart={createMatch}
+          onBack={() => setScreen("mode")}
+        />
+      )}
+
+      {/* VOTE */}
+      {screen === "vote" && activeMatch && (
+        <VoteScreen
+          match={activeMatch}
+          fx={fx}
+          onUpdateMatch={async (m) => {
+            // aggiorniamo stato locale immediatamente per UI fluida
+            setActiveMatch(m);
+            await updateActiveMatch(m);
+          }}
+          onFinish={onFinishFromVote}
+        />
+      )}
+
+      {/* se vote ma activeMatch non ancora caricato */}
+      {screen === "vote" && !activeMatch && (
+        <div className="screen vote" style={{ alignItems: "center" }}>
+          <div className="card" style={{ width: "100%", maxWidth: 560 }}>
+            <h2 className="h2">Caricamento partita…</h2>
+            <p className="muted">Se non arriva, torna Home e riprova.</p>
+            <button className="btn big" onClick={() => setScreen("home")}>
+              Torna Home
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* RANKING */}
+      {screen === "ranking" && finalMatch && (
+        <RankingScreen
+          finalMatch={finalMatch}
+          fx={fx}
+          onClose={() => {
+            setFinalMatch(null);
+            setScreen("home");
+          }}
+        />
+      )}
+
+      {/* HISTORY */}
+      {screen === "history" && (
+        <HistoryScreen items={history} onBack={() => setScreen("home")} />
+      )}
+    </div>
+  );
+}
+
+/* =========================================
+   Piccole animazioni inline (se non ci sono in App.css)
+========================================= */
+const style = document.createElement("style");
+style.innerHTML = `
+@keyframes fpPop { from { transform: translateY(6px); opacity: .0 } to { transform: translateY(0); opacity: 1 } }
+@keyframes fpLights { from { opacity: .60 } to { opacity: 1 } }
+`;
+document.head.appendChild(style);
