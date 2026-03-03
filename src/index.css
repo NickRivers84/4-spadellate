@@ -104,3 +104,55 @@ button:hover {
     padding: 30px 16px;
   }
 }
+.update-banner {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #111;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 12px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  z-index: 9999;
+}
+
+.update-banner button {
+  background: white;
+  color: #111;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.update-banner {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #111;
+  color: white;
+  padding: 14px 20px;
+  border-radius: 12px;
+  display: flex;
+  gap: 15px;
+  align-items: center;
+  z-index: 9999;
+  box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+}
+
+.update-banner button {
+  background: white;
+  color: #111;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.hidden {
+  display: none;
+}
