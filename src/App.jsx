@@ -121,10 +121,10 @@ function VoteScreen({ restaurants, onFinish }) {
   );
 
   return (
-    <div className="screen vote">
-      <h3>
-        Giocatore {player + 1} → {restaurants[rest]}
-      </h3>
+  <div style={{ background: "red", minHeight: "100vh", color: "white" }}>
+    TEST VISIBILE
+  </div>
+);
 
       {slider("🍝 Cibo", "cibo")}
       {slider("🛎 Servizio", "servizio")}
