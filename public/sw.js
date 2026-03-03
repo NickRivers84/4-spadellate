@@ -1,6 +1,6 @@
 // 4 Spadellate – Smart Update Service Worker
 
-const VERSION = "v6"; // 🔁 AUMENTA QUESTO NUMERO AD OGNI RELEASE
+const VERSION = "v7"; // 🔁 AUMENTA QUESTO NUMERO AD OGNI RELEASE
 const CACHE_NAME = `4spadellate-${VERSION}`;
 
 // INSTALL
