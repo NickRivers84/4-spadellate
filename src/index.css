@@ -1,158 +1,30 @@
-/* RESET BASE */
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-}
-
 body {
-  background-color: #f4f4f4;
-  color: #222;
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f5f5f5;
 }
 
-/* CONTAINER PRINCIPALE SCHERMATE */
-.screen {
+.app {
   min-height: 100vh;
-  width: 100%;
-  padding: 40px 20px;
-
   display: flex;
-  flex-direction: column;
+  justify-content: center;
   align-items: center;
-  justify-content: flex-start;
-
-  overflow-y: auto;
 }
 
-/* TITOLI */
-h1, h2 {
-  margin-bottom: 24px;
+.screen {
   text-align: center;
+  background: white;
+  padding: 40px;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
 }
 
-/* CONTENITORE FORM */
-.setup,
-.vote,
-.ranking {
-  width: 100%;
-  max-width: 500px;
-
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-/* INPUT TESTO */
-input[type="text"],
-input:not([type]) {
-  width: 100%;
-  max-width: 400px;
-  padding: 10px 12px;
-  margin-bottom: 14px;
-
-  border-radius: 8px;
-  border: 1px solid #ccc;
-  font-size: 16px;
-}
-
-/* SLIDER */
-input[type="range"] {
-  width: 100%;
-  max-width: 400px;
-  margin-bottom: 20px;
-}
-
-/* BOTTONI */
 button {
-  padding: 10px 18px;
-  margin: 8px 4px;
-
+  padding: 10px 20px;
+  margin-top: 20px;
+  border-radius: 8px;
   border: none;
-  border-radius: 8px;
-  background-color: #222;
+  background: black;
   color: white;
-  font-size: 15px;
   cursor: pointer;
-
-  transition: background 0.2s ease;
-}
-
-button:hover {
-  background-color: #444;
-}
-
-/* CLASSIFICA */
-.ranking-item {
-  width: 100%;
-  max-width: 400px;
-  padding: 12px;
-  margin-bottom: 10px;
-
-  border-radius: 8px;
-  background: white;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-
-  display: flex;
-  justify-content: space-between;
-  font-weight: 500;
-}
-
-/* RESPONSIVE PICCOLO */
-@media (max-width: 480px) {
-  .screen {
-    padding: 30px 16px;
-  }
-}
-.update-banner {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #111;
-  color: white;
-  padding: 12px 20px;
-  border-radius: 12px;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  z-index: 9999;
-}
-
-.update-banner button {
-  background: white;
-  color: #111;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.update-banner {
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #111;
-  color: white;
-  padding: 14px 20px;
-  border-radius: 12px;
-  display: flex;
-  gap: 15px;
-  align-items: center;
-  z-index: 9999;
-  box-shadow: 0 5px 20px rgba(0,0,0,0.3);
-}
-
-.update-banner button {
-  background: white;
-  color: #111;
-  border: none;
-  padding: 6px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.hidden {
-  display: none;
 }

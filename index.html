@@ -1,33 +1,12 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="it">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
-    <title>Forchette&Polpette</title>
-
-    <meta name="theme-color" content="#f3c86a" />
-    <meta name="description" content="Party game da tavolata stile TV: voti, bonus e classifica finale." />
-
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="icon" type="image/png" href="/icons/icon-192.png" />
-
+    <title>4 Spadellate</title>
   </head>
-  <div id="updateBanner" class="update-banner hidden">
-    <span>Nuova versione disponibile</span>
-    <button id="updateBtn">Aggiorna</button>
-  </div>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
-
-    <script>
-      // Register Service Worker (PWA)
-      if ("serviceWorker" in navigator) {
-        window.addEventListener("load", () => {
-          navigator.serviceWorker.register("/sw.js").catch(() => {});
-        });
-      }
-    </script>
   </body>
 </html>
