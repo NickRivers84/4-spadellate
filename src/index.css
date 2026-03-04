@@ -1,12 +1,9 @@
-/* RESET */
 body {
   margin: 0;
   font-family: "Segoe UI", sans-serif;
-  overflow-x: hidden;
 }
 
-/* === SFONDO CALDO DINAMICO === */
-.home-bg {
+.app {
   min-height: 100vh;
   display: flex;
   justify-content: center;
@@ -15,56 +12,62 @@ body {
   overflow: hidden;
 }
 
-/* Gradiente animato */
-.home-bg::before {
+/* === SFONDI === */
+
+.bg-home::before,
+.bg-vote::before,
+.bg-result::before {
   content: "";
   position: absolute;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle at 30% 30%, #ff9966, transparent 40%),
-              radial-gradient(circle at 70% 70%, #ff5e62, transparent 40%),
-              linear-gradient(135deg, #8b0000, #ff4500);
-  animation: moveBg 15s ease infinite alternate;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: brightness(0.7);
   z-index: -2;
 }
 
-/* Luce soffusa */
-.home-bg::after {
+.bg-home::before {
+  background-image: url("/backgrounds/bg-1.png");
+}
+
+.bg-vote::before {
+  background-image: url("/backgrounds/bg-2.png");
+}
+
+.bg-result::before {
+  background-image: url("/backgrounds/bg-3.png");
+}
+
+/* Overlay caldo */
+.app::after {
   content: "";
   position: absolute;
-  width: 100%;
-  height: 100%;
-  background: radial-gradient(circle at center, rgba(255,255,255,0.08), transparent 70%);
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(180, 0, 0, 0.4),
+    rgba(255, 80, 0, 0.4)
+  );
   z-index: -1;
 }
 
-@keyframes moveBg {
-  0% {
-    transform: translate(0, 0);
-  }
-  100% {
-    transform: translate(-10%, -10%);
-  }
-}
-
-/* === CARD CENTRALE === */
+/* CARD */
 .card {
   background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(15px);
+  backdrop-filter: blur(12px);
   padding: 50px 40px;
   border-radius: 25px;
   text-align: center;
-  width: 340px;
+  width: 350px;
   color: white;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
-  animation: fadeIn 0.6s ease;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
+  animation: fade 0.5s ease;
 }
 
-/* Animazione ingresso */
-@keyframes fadeIn {
+@keyframes fade {
   from {
     opacity: 0;
-    transform: translateY(25px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
@@ -72,62 +75,45 @@ body {
   }
 }
 
-/* TITOLI */
-.title {
-  margin: 0;
-  font-size: 32px;
-  letter-spacing: 1px;
-}
-
-.subtitle {
-  margin: 20px 0 30px 0;
-  font-size: 15px;
-  opacity: 0.95;
-}
-
-/* === BOTTONI === */
-.primary-btn {
-  padding: 14px 28px;
-  border-radius: 12px;
+/* BOTTONI */
+.primary-btn,
+.secondary-btn,
+.vote-btn {
+  margin: 8px;
+  padding: 12px 20px;
+  border-radius: 10px;
   border: none;
+  cursor: pointer;
+  font-weight: 600;
+  transition: 0.2s ease;
+}
+
+.primary-btn {
   background: white;
-  color: #ff5e62;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.25s ease;
+  color: #b00000;
 }
 
-.primary-btn:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
-}
-
-.primary-btn:active {
-  transform: scale(0.96);
-}
-
-/* Secondario */
 .secondary-btn {
-  padding: 12px 25px;
-  border-radius: 12px;
-  border: 2px solid white;
   background: transparent;
+  border: 2px solid white;
   color: white;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.25s ease;
 }
 
-.secondary-btn:hover {
-  background: rgba(255, 255, 255, 0.2);
+.vote-btn {
+  background: rgba(255, 255, 255, 0.9);
+  color: #b00000;
+  width: 40px;
 }
 
-.secondary-btn:active {
-  transform: scale(0.96);
+.primary-btn:hover,
+.secondary-btn:hover,
+.vote-btn:hover {
+  transform: scale(1.05);
 }
 
-/* Lista */
-ul li {
-  margin: 8px 0;
-  font-size: 14px;
+/* GRID VOTI */
+.vote-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
 }

@@ -1,76 +1,95 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 export default function App() {
   const [screen, setScreen] = useState("home");
   const [mode, setMode] = useState(null);
-
   const [players, setPlayers] = useState(4);
-  const [restaurantsCount, setRestaurantsCount] = useState(4);
+  const [restaurants, setRestaurants] = useState([]);
+  const [votes, setVotes] = useState({});
+  const [currentPlayer, setCurrentPlayer] = useState(0);
+  const [currentRestaurant, setCurrentRestaurant] = useState(0);
 
-  const [restaurants, setRestaurants] = useState([
-    "La Bottega",
-    "Trattoria Roma",
-    "Osteria Bella",
-    "Spadella"
-  ]);
+  /* ================= SALVATAGGIO AUTOMATICO ================= */
 
-  /* =========================
-     RESET CONFIG
-  ========================== */
+  useEffect(() => {
+    const saved = localStorage.getItem("spadellate_save");
+    if (saved) {
+      const data = JSON.parse(saved);
+      setScreen(data.screen);
+      setMode(data.mode);
+      setPlayers(data.players);
+      setRestaurants(data.restaurants);
+      setVotes(data.votes);
+      setCurrentPlayer(data.currentPlayer);
+      setCurrentRestaurant(data.currentRestaurant);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem(
+      "spadellate_save",
+      JSON.stringify({
+        screen,
+        mode,
+        players,
+        restaurants,
+        votes,
+        currentPlayer,
+        currentRestaurant
+      })
+    );
+  }, [screen, mode, players, restaurants, votes, currentPlayer, currentRestaurant]);
+
+  const resetGame = () => {
+    localStorage.removeItem("spadellate_save");
+    setScreen("home");
+  };
+
+  /* ================= MODALITÀ ================= */
+
   const startClassic = () => {
     setMode("classic");
     setPlayers(4);
-    setRestaurantsCount(4);
     setRestaurants([
       "La Bottega",
       "Trattoria Roma",
       "Osteria Bella",
       "Spadella"
     ]);
-    setScreen("game");
+    setVotes({});
+    setCurrentPlayer(0);
+    setCurrentRestaurant(0);
+    setScreen("vote");
   };
 
   const startOneShot = () => {
     setMode("oneshot");
-    setRestaurantsCount(1);
     setRestaurants(["Ristorante Unico"]);
-    setScreen("setupPlayers");
+    setVotes({});
+    setCurrentPlayer(0);
+    setScreen("setupOneShot");
   };
 
   const startCustom = () => {
     setMode("custom");
+    setVotes({});
     setScreen("setupCustom");
   };
 
-  /* =========================
-     HOME
-  ========================== */
+  /* ================= HOME ================= */
+
   if (screen === "home") {
     return (
-      <div className="app home-bg">
+      <div className="app bg-home fade">
         <div className="card">
-          <h1 className="title">🍳 4 Spadellate</h1>
-          <p className="subtitle">
-            Scegli la modalità di gioco
-          </p>
-
+          <h1>🍳 4 Spadellate</h1>
           <button className="primary-btn" onClick={startClassic}>
             Modalità Classica
           </button>
-
-          <button
-            className="secondary-btn"
-            onClick={startOneShot}
-            style={{ marginTop: "12px" }}
-          >
+          <button className="secondary-btn" onClick={startOneShot}>
             Modalità One Shot
           </button>
-
-          <button
-            className="secondary-btn"
-            onClick={startCustom}
-            style={{ marginTop: "12px" }}
-          >
+          <button className="secondary-btn" onClick={startCustom}>
             Modalità Personalizzata
           </button>
         </div>
@@ -78,16 +97,13 @@ export default function App() {
     );
   }
 
-  /* =========================
-     SETUP ONE SHOT
-  ========================== */
-  if (screen === "setupPlayers") {
+  /* ================= ONE SHOT SETUP ================= */
+
+  if (screen === "setupOneShot") {
     return (
-      <div className="app home-bg">
+      <div className="app bg-home fade">
         <div className="card">
           <h2>One Shot</h2>
-          <p>Numero partecipanti</p>
-
           <input
             type="range"
             min="2"
@@ -95,36 +111,22 @@ export default function App() {
             value={players}
             onChange={(e) => setPlayers(Number(e.target.value))}
           />
-
           <p>{players} giocatori</p>
-
-          <button
-            className="primary-btn"
-            onClick={() => setScreen("game")}
-          >
+          <button className="primary-btn" onClick={() => setScreen("vote")}>
             Inizia
-          </button>
-
-          <button
-            className="secondary-btn"
-            onClick={() => setScreen("home")}
-            style={{ marginTop: "12px" }}
-          >
-            Indietro
           </button>
         </div>
       </div>
     );
   }
 
-  /* =========================
-     SETUP PERSONALIZZATA
-  ========================== */
+  /* ================= PERSONALIZZATA ================= */
+
   if (screen === "setupCustom") {
     return (
-      <div className="app home-bg">
+      <div className="app bg-home fade">
         <div className="card">
-          <h2>Modalità Personalizzata</h2>
+          <h2>Personalizzata</h2>
 
           <p>Giocatori</p>
           <input
@@ -134,92 +136,105 @@ export default function App() {
             value={players}
             onChange={(e) => setPlayers(Number(e.target.value))}
           />
-          <p>{players} giocatori</p>
 
           <p>Ristoranti</p>
           <input
             type="range"
             min="2"
             max="8"
-            value={restaurantsCount}
-            onChange={(e) => {
-              const value = Number(e.target.value);
-              setRestaurantsCount(value);
+            onChange={(e) =>
               setRestaurants(
                 Array.from(
-                  { length: value },
+                  { length: Number(e.target.value) },
                   (_, i) => `Ristorante ${i + 1}`
                 )
-              );
-            }}
+              )
+            }
           />
-          <p>{restaurantsCount} ristoranti</p>
 
-          <button
-            className="primary-btn"
-            onClick={() => setScreen("game")}
-          >
+          <button className="primary-btn" onClick={() => setScreen("vote")}>
             Inizia
           </button>
-
-          <button
-            className="secondary-btn"
-            onClick={() => setScreen("home")}
-            style={{ marginTop: "12px" }}
-          >
-            Indietro
-          </button>
         </div>
       </div>
     );
   }
 
-  /* =========================
-     GAME
-  ========================== */
-  if (screen === "game") {
+  /* ================= VOTAZIONE ================= */
+
+  if (screen === "vote") {
+    const currentRest = restaurants[currentRestaurant];
+
+    const submitVote = (value) => {
+      const updated = { ...votes };
+      if (!updated[currentRest]) updated[currentRest] = [];
+      updated[currentRest].push(value);
+      setVotes(updated);
+
+      if (mode === "oneshot") {
+        if (currentPlayer + 1 >= players) {
+          setScreen("ranking");
+        } else {
+          setCurrentPlayer(currentPlayer + 1);
+        }
+      } else {
+        if (currentRestaurant + 1 < restaurants.length) {
+          setCurrentRestaurant(currentRestaurant + 1);
+        } else if (currentPlayer + 1 < players) {
+          setCurrentPlayer(currentPlayer + 1);
+          setCurrentRestaurant(0);
+        } else {
+          setScreen("ranking");
+        }
+      }
+    };
+
     return (
-      <div className="app home-bg">
+      <div className="app bg-vote fade">
         <div className="card">
           <h2>
-            {mode === "classic" && "Modalità Classica"}
-            {mode === "oneshot" && "Modalità One Shot"}
-            {mode === "custom" && "Modalità Personalizzata"}
+            Giocatore {currentPlayer + 1}
+            <br />
+            {currentRest}
           </h2>
 
-          <p>{players} giocatori</p>
-          <p>{restaurantsCount} ristoranti</p>
-
-          <ul style={{ padding: 0, listStyle: "none" }}>
-            {restaurants.map((r, i) => (
-              <li key={i}>{r}</li>
+          <div className="vote-grid">
+            {[...Array(10)].map((_, i) => (
+              <button
+                key={i}
+                className="vote-btn"
+                onClick={() => submitVote(i + 1)}
+              >
+                {i + 1}
+              </button>
             ))}
-          </ul>
-
-          <button
-            className="primary-btn"
-            onClick={() => setScreen("ranking")}
-          >
-            Vai alla classifica
-          </button>
+          </div>
         </div>
       </div>
     );
   }
 
-  /* =========================
-     RANKING
-  ========================== */
-  return (
-    <div className="app home-bg">
-      <div className="card">
-        <h2>🏆 Classifica Finale</h2>
-        <p>Classifica simulata</p>
+  /* ================= CLASSIFICA ================= */
 
-        <button
-          className="primary-btn"
-          onClick={() => setScreen("home")}
-        >
+  const ranking = Object.entries(votes)
+    .map(([name, v]) => ({
+      name,
+      avg: v.reduce((a, b) => a + b, 0) / v.length
+    }))
+    .sort((a, b) => b.avg - a.avg);
+
+  return (
+    <div className="app bg-result fade">
+      <div className="card">
+        <h2>🏆 Verdetto Finale</h2>
+
+        {ranking.map((r, i) => (
+          <p key={i}>
+            {i + 1}. {r.name} – {r.avg.toFixed(2)}
+          </p>
+        ))}
+
+        <button className="primary-btn" onClick={resetGame}>
           Nuova partita
         </button>
       </div>
