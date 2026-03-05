@@ -1,243 +1,334 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 
 export default function App() {
+
+  /* =========================
+  STATE
+  ========================= */
+
   const [screen, setScreen] = useState("home");
   const [mode, setMode] = useState(null);
+
   const [players, setPlayers] = useState(4);
-  const [restaurants, setRestaurants] = useState([]);
-  const [votes, setVotes] = useState({});
-  const [currentPlayer, setCurrentPlayer] = useState(0);
-  const [currentRestaurant, setCurrentRestaurant] = useState(0);
+  const [restaurants, setRestaurants] = useState(4);
 
-  /* ================= SALVATAGGIO AUTOMATICO ================= */
+  const [currentPlayer, setCurrentPlayer] = useState(1);
+  const [currentRestaurant, setCurrentRestaurant] = useState(1);
 
-  useEffect(() => {
-    const saved = localStorage.getItem("spadellate_save");
-    if (saved) {
-      const data = JSON.parse(saved);
-      setScreen(data.screen);
-      setMode(data.mode);
-      setPlayers(data.players);
-      setRestaurants(data.restaurants);
-      setVotes(data.votes);
-      setCurrentPlayer(data.currentPlayer);
-      setCurrentRestaurant(data.currentRestaurant);
+  const [votes, setVotes] = useState([]);
+
+  const [vote, setVote] = useState({
+    menu:5,
+    servizio:5,
+    location:5,
+    conto:5,
+    bonus:false
+  });
+
+  /* =========================
+  NAVIGATION
+  ========================= */
+
+  function startMode(selectedMode){
+
+    setMode(selectedMode)
+
+    if(selectedMode==="classica"){
+      setPlayers(4)
+      setRestaurants(4)
     }
-  }, []);
 
-  useEffect(() => {
-    localStorage.setItem(
-      "spadellate_save",
-      JSON.stringify({
-        screen,
-        mode,
-        players,
-        restaurants,
-        votes,
-        currentPlayer,
-        currentRestaurant
-      })
-    );
-  }, [screen, mode, players, restaurants, votes, currentPlayer, currentRestaurant]);
+    if(selectedMode==="oneshot"){
+      setRestaurants(1)
+    }
 
-  const resetGame = () => {
-    localStorage.removeItem("spadellate_save");
-    setScreen("home");
-  };
-
-  /* ================= MODALITÀ ================= */
-
-  const startClassic = () => {
-    setMode("classic");
-    setPlayers(4);
-    setRestaurants([
-      "La Bottega",
-      "Trattoria Roma",
-      "Osteria Bella",
-      "Spadella"
-    ]);
-    setVotes({});
-    setCurrentPlayer(0);
-    setCurrentRestaurant(0);
-    setScreen("vote");
-  };
-
-  const startOneShot = () => {
-    setMode("oneshot");
-    setRestaurants(["Ristorante Unico"]);
-    setVotes({});
-    setCurrentPlayer(0);
-    setScreen("setupOneShot");
-  };
-
-  const startCustom = () => {
-    setMode("custom");
-    setVotes({});
-    setScreen("setupCustom");
-  };
-
-  /* ================= HOME ================= */
-
-  if (screen === "home") {
-    return (
-      <div className="app bg-home fade">
-        <div className="card">
-          <h1>🍳 4 Spadellate</h1>
-          <button className="primary-btn" onClick={startClassic}>
-            Modalità Classica
-          </button>
-          <button className="secondary-btn" onClick={startOneShot}>
-            Modalità One Shot
-          </button>
-          <button className="secondary-btn" onClick={startCustom}>
-            Modalità Personalizzata
-          </button>
-        </div>
-      </div>
-    );
+    setScreen("setup")
   }
 
-  /* ================= ONE SHOT SETUP ================= */
-
-  if (screen === "setupOneShot") {
-    return (
-      <div className="app bg-home fade">
-        <div className="card">
-          <h2>One Shot</h2>
-          <input
-            type="range"
-            min="2"
-            max="8"
-            value={players}
-            onChange={(e) => setPlayers(Number(e.target.value))}
-          />
-          <p>{players} giocatori</p>
-          <button className="primary-btn" onClick={() => setScreen("vote")}>
-            Inizia
-          </button>
-        </div>
-      </div>
-    );
+  function startGame(){
+    setCurrentPlayer(1)
+    setCurrentRestaurant(1)
+    setVotes([])
+    setScreen("vote")
   }
 
-  /* ================= PERSONALIZZATA ================= */
+  /* =========================
+  VOTE HANDLER
+  ========================= */
 
-  if (screen === "setupCustom") {
-    return (
-      <div className="app bg-home fade">
-        <div className="card">
-          <h2>Personalizzata</h2>
-
-          <p>Giocatori</p>
-          <input
-            type="range"
-            min="2"
-            max="8"
-            value={players}
-            onChange={(e) => setPlayers(Number(e.target.value))}
-          />
-
-          <p>Ristoranti</p>
-          <input
-            type="range"
-            min="2"
-            max="8"
-            onChange={(e) =>
-              setRestaurants(
-                Array.from(
-                  { length: Number(e.target.value) },
-                  (_, i) => `Ristorante ${i + 1}`
-                )
-              )
-            }
-          />
-
-          <button className="primary-btn" onClick={() => setScreen("vote")}>
-            Inizia
-          </button>
-        </div>
-      </div>
-    );
+  function updateVote(field,value){
+    setVote({
+      ...vote,
+      [field]:value
+    })
   }
 
-  /* ================= VOTAZIONE ================= */
+  function confirmVote(){
 
-  if (screen === "vote") {
-    const currentRest = restaurants[currentRestaurant];
+    const total =
+      vote.menu +
+      vote.servizio +
+      vote.location +
+      vote.conto +
+      (vote.bonus ? 5 : 0)
 
-    const submitVote = (value) => {
-      const updated = { ...votes };
-      if (!updated[currentRest]) updated[currentRest] = [];
-      updated[currentRest].push(value);
-      setVotes(updated);
-
-      if (mode === "oneshot") {
-        if (currentPlayer + 1 >= players) {
-          setScreen("ranking");
-        } else {
-          setCurrentPlayer(currentPlayer + 1);
-        }
-      } else {
-        if (currentRestaurant + 1 < restaurants.length) {
-          setCurrentRestaurant(currentRestaurant + 1);
-        } else if (currentPlayer + 1 < players) {
-          setCurrentPlayer(currentPlayer + 1);
-          setCurrentRestaurant(0);
-        } else {
-          setScreen("ranking");
-        }
+    const newVotes = [
+      ...votes,
+      {
+        player:currentPlayer,
+        restaurant:currentRestaurant,
+        total
       }
-    };
+    ]
 
-    return (
-      <div className="app bg-vote fade">
-        <div className="card">
-          <h2>
-            Giocatore {currentPlayer + 1}
-            <br />
-            {currentRest}
-          </h2>
+    setVotes(newVotes)
 
-          <div className="vote-grid">
-            {[...Array(10)].map((_, i) => (
-              <button
-                key={i}
-                className="vote-btn"
-                onClick={() => submitVote(i + 1)}
-              >
-                {i + 1}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
+    if(currentRestaurant < restaurants){
+      setCurrentRestaurant(currentRestaurant+1)
+    }
+    else{
+
+      if(currentPlayer < players){
+
+        setCurrentPlayer(currentPlayer+1)
+        setCurrentRestaurant(1)
+
+      }else{
+
+        setScreen("result")
+        return
+      }
+
+    }
+
+    setVote({
+      menu:5,
+      servizio:5,
+      location:5,
+      conto:5,
+      bonus:false
+    })
   }
 
-  /* ================= CLASSIFICA ================= */
+  /* =========================
+  RESULT
+  ========================= */
 
-  const ranking = Object.entries(votes)
-    .map(([name, v]) => ({
-      name,
-      avg: v.reduce((a, b) => a + b, 0) / v.length
-    }))
-    .sort((a, b) => b.avg - a.avg);
+  function calculateResults(){
 
-  return (
-    <div className="app bg-result fade">
-      <div className="card">
-        <h2>🏆 Verdetto Finale</h2>
+    const totals = {}
 
-        {ranking.map((r, i) => (
-          <p key={i}>
-            {i + 1}. {r.name} – {r.avg.toFixed(2)}
-          </p>
+    votes.forEach(v=>{
+
+      if(!totals[v.restaurant]){
+        totals[v.restaurant]=0
+      }
+
+      totals[v.restaurant]+=v.total
+
+    })
+
+    return Object.entries(totals)
+      .sort((a,b)=>b[1]-a[1])
+  }
+
+  /* =========================
+  HOME
+  ========================= */
+
+  if(screen==="home"){
+    return(
+
+      <div className="screen">
+
+        <h1>🍝 Forchette & Polpette</h1>
+
+        <p>Scegli la modalità</p>
+
+        <button onClick={()=>startMode("classica")}>
+        Modalità Classica
+        </button>
+
+        <button onClick={()=>startMode("oneshot")}>
+        One Shot
+        </button>
+
+        <button onClick={()=>startMode("custom")}>
+        Personalizzata
+        </button>
+
+      </div>
+
+    )
+  }
+
+  /* =========================
+  SETUP
+  ========================= */
+
+  if(screen==="setup"){
+    return(
+
+      <div className="screen">
+
+        <h2>Impostazioni partita</h2>
+
+        <p>Giocatori: {players}</p>
+
+        {mode!=="classica" &&
+
+        <input
+        type="range"
+        min="2"
+        max="8"
+        value={players}
+        onChange={(e)=>setPlayers(Number(e.target.value))}
+        />
+        }
+
+        {mode!=="oneshot" &&
+
+        <>
+        <p>Ristoranti: {restaurants}</p>
+
+        <input
+        type="range"
+        min="2"
+        max="8"
+        value={restaurants}
+        onChange={(e)=>setRestaurants(Number(e.target.value))}
+        />
+        </>
+        }
+
+        <button onClick={startGame}>
+        Avvia la cena 🍷
+        </button>
+
+      </div>
+
+    )
+  }
+
+  /* =========================
+  VOTE
+  ========================= */
+
+  if(screen==="vote"){
+    return(
+
+      <div className="screen">
+
+        <h2>
+        Giocatore {currentPlayer}
+        </h2>
+
+        <h3>
+        Ristorante {currentRestaurant}
+        </h3>
+
+        <VoteSlider
+        label="Menu"
+        value={vote.menu}
+        onChange={(v)=>updateVote("menu",v)}
+        />
+
+        <VoteSlider
+        label="Servizio"
+        value={vote.servizio}
+        onChange={(v)=>updateVote("servizio",v)}
+        />
+
+        <VoteSlider
+        label="Location"
+        value={vote.location}
+        onChange={(v)=>updateVote("location",v)}
+        />
+
+        <VoteSlider
+        label="Conto"
+        value={vote.conto}
+        onChange={(v)=>updateVote("conto",v)}
+        />
+
+        <label>
+
+        Bonus +5
+
+        <input
+        type="checkbox"
+        checked={vote.bonus}
+        onChange={(e)=>updateVote("bonus",e.target.checked)}
+        />
+
+        </label>
+
+        <button onClick={confirmVote}>
+        Conferma voto
+        </button>
+
+      </div>
+
+    )
+  }
+
+  /* =========================
+  RESULT
+  ========================= */
+
+  if(screen==="result"){
+
+    const ranking = calculateResults()
+
+    return(
+
+      <div className="screen">
+
+        <h2>Classifica finale</h2>
+
+        {ranking.map((r,i)=>(
+          <div key={i}>
+          {i+1}° Ristorante {r[0]} — {r[1]} punti
+          </div>
         ))}
 
-        <button className="primary-btn" onClick={resetGame}>
-          Nuova partita
+        <button onClick={()=>setScreen("home")}>
+        Nuova partita
         </button>
+
       </div>
+
+    )
+  }
+
+}
+
+/* =========================
+SLIDER COMPONENT
+========================= */
+
+function VoteSlider({label,value,onChange}){
+
+  return(
+
+    <div style={{margin:"20px 0"}}>
+
+      <label>
+
+      {label}: {value}
+
+      </label>
+
+      <input
+      type="range"
+      min="0"
+      max="10"
+      value={value}
+      onChange={(e)=>onChange(Number(e.target.value))}
+      />
+
     </div>
-  );
+
+  )
+
 }

@@ -3,7 +3,9 @@ body {
   font-family: "Segoe UI", sans-serif;
 }
 
-.app {
+/* === STRUTTURA BASE === */
+
+.screen {
   min-height: 100vh;
   display: flex;
   justify-content: center;
@@ -12,76 +14,77 @@ body {
   overflow: hidden;
 }
 
-/* === SFONDI === */
+/* === SFONDI REALI === */
 
-.bg-home::before,
-.bg-vote::before,
-.bg-result::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-size: cover;
-  background-position: center;
-  filter: brightness(0.7);
-  z-index: -2;
+.bg-home {
+  background: url("/backgrounds/bg-1.png") center / cover no-repeat;
 }
 
-.bg-home::before {
-  background-image: url("/backgrounds/bg-1.png");
+.bg-vote {
+  background: url("/backgrounds/bg-2.png") center / cover no-repeat;
 }
 
-.bg-vote::before {
-  background-image: url("/backgrounds/bg-2.png");
+.bg-result {
+  background: url("/backgrounds/bg-3.png") center / cover no-repeat;
 }
 
-.bg-result::before {
-  background-image: url("/backgrounds/bg-3.png");
-}
+/* Overlay per leggibilità */
 
-/* Overlay caldo */
-.app::after {
+.screen::after {
   content: "";
   position: absolute;
   inset: 0;
   background: linear-gradient(
     135deg,
-    rgba(180, 0, 0, 0.4),
-    rgba(255, 80, 0, 0.4)
+    rgba(180, 0, 0, 0.55),
+    rgba(255, 80, 0, 0.55)
   );
-  z-index: -1;
 }
 
-/* CARD */
+/* === CARD === */
+
 .card {
+  position: relative;
   background: rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(12px);
   padding: 50px 40px;
   border-radius: 25px;
   text-align: center;
-  width: 350px;
+  width: 360px;
   color: white;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.4);
-  animation: fade 0.5s ease;
+  z-index: 1;
 }
 
-@keyframes fade {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* === SPLASH === */
+
+.splash-content {
+  text-align: center;
+  color: white;
+  z-index: 1;
 }
 
-/* BOTTONI */
+.logo {
+  font-size: 60px;
+  margin: 0;
+  animation: fadeIn 1s ease;
+}
+
+.tagline {
+  font-size: 20px;
+  margin-bottom: 30px;
+  opacity: 0.9;
+}
+
+/* === BOTTONI === */
+
 .primary-btn,
 .secondary-btn,
-.vote-btn {
-  margin: 8px;
-  padding: 12px 20px;
-  border-radius: 10px;
+.vote-btn,
+.google-btn {
+  margin: 10px;
+  padding: 14px 25px;
+  border-radius: 12px;
   border: none;
   cursor: pointer;
   font-weight: 600;
@@ -99,21 +102,41 @@ body {
   color: white;
 }
 
+.google-btn {
+  background: #ffffff;
+  color: #444;
+}
+
 .vote-btn {
   background: rgba(255, 255, 255, 0.9);
   color: #b00000;
-  width: 40px;
+  width: 45px;
 }
 
 .primary-btn:hover,
 .secondary-btn:hover,
-.vote-btn:hover {
+.vote-btn:hover,
+.google-btn:hover {
   transform: scale(1.05);
 }
 
-/* GRID VOTI */
+/* === GRID VOTI === */
+
 .vote-grid {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
+}
+
+/* Animazione */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
