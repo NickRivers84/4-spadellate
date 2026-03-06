@@ -39,10 +39,10 @@ export default function App() {
   }
 
   function selectVote(category,value){
-    setVotes({
-      ...votes,
+    setVotes(prev => ({
+      ...prev,
       [category]:value
-    })
+    }))
   }
 
   function endGame(){
@@ -57,11 +57,12 @@ export default function App() {
     {key:"bonus",label:"Bonus"}
   ]
 
+  /* HOME */
+
   if(screen==="home"){
     return(
 
       <div className="screen bg1">
-
 
         <button onClick={startClassic}>
           Modalità Classica
@@ -80,16 +81,18 @@ export default function App() {
     )
   }
 
+  /* SETUP */
+
   if(screen==="setup"){
     return(
 
-      <div className="screen bg1">
+      <div className="screen bg2">
 
-        <h2>Impostazioni</h2>
+        <h2 className="title">Impostazioni partita</h2>
 
         {mode!=="oneshot" && (
           <>
-            <p>Giocatori: {players}</p>
+            <p className="label">Giocatori: {players}</p>
 
             <input
               type="range"
@@ -101,9 +104,9 @@ export default function App() {
           </>
         )}
 
-        {mode!=="oneshot" && (
+        {mode==="custom" && (
           <>
-            <p>Ristoranti: {restaurants}</p>
+            <p className="label">Ristoranti: {restaurants}</p>
 
             <input
               type="range"
@@ -117,7 +120,7 @@ export default function App() {
 
         {mode==="oneshot" && (
           <>
-            <p>Giocatori: {players}</p>
+            <p className="label">Giocatori: {players}</p>
 
             <input
               type="range"
@@ -127,12 +130,12 @@ export default function App() {
               onChange={(e)=>setPlayers(Number(e.target.value))}
             />
 
-            <p>Ristorante: 1</p>
+            <p className="label">Ristorante: 1</p>
           </>
         )}
 
         <button onClick={startGame}>
-          Inizia
+          Inizia partita
         </button>
 
       </div>
@@ -140,21 +143,23 @@ export default function App() {
     )
   }
 
+  /* VOTAZIONE */
+
   if(screen==="vote"){
     return(
 
       <div className="screen bg2">
 
-        <h2>Votazione</h2>
+        <h2 className="title">Votazione</h2>
 
-        <p>
-        Giocatori: {players} | Ristoranti: {restaurants}
+        <p className="label">
+          Giocatori: {players} | Ristoranti: {restaurants}
         </p>
 
         {voteCategories.map(cat=>(
           <div key={cat.key} className="voteRow">
 
-            <p>{cat.label}</p>
+            <p className="voteLabel">{cat.label}</p>
 
             <div className="voteButtons">
 
@@ -162,7 +167,7 @@ export default function App() {
                 <button
                   key={n}
                   className={
-                    votes[cat.key]===n ? "selected" : ""
+                    votes[cat.key]===n ? "voteBtn selected" : "voteBtn"
                   }
                   onClick={()=>selectVote(cat.key,n)}
                 >
@@ -176,7 +181,7 @@ export default function App() {
         ))}
 
         <button onClick={endGame}>
-          Fine
+          Fine votazione
         </button>
 
       </div>
@@ -184,15 +189,17 @@ export default function App() {
     )
   }
 
+  /* RISULTATO */
+
   if(screen==="result"){
     return(
 
       <div className="screen bg3">
 
-        <h2>Risultato</h2>
+        <h2 className="title">Risultato</h2>
 
         {Object.entries(votes).map(([k,v])=>(
-          <p key={k}>
+          <p key={k} className="label">
             {k}: {v ?? "-"}
           </p>
         ))}
