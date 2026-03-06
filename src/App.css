@@ -172,3 +172,6 @@ button{
   background: rgba(255,255,255,0.25);
   z-index: -1;
 }
+h1, h2, h3, p, label, span, div {
+  color: #b30000;
+}

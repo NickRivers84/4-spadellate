@@ -65,4 +65,7 @@ body{
   background-position:center;
   background-repeat:no-repeat;
   }
+  h1, h2, h3, p, label, span, div {
+    color: #b30000;
+  }
   
