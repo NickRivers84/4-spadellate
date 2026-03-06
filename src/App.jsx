@@ -62,7 +62,6 @@ export default function App() {
 
       <div className="screen bg1">
 
-        <h1>4 Spadellate</h1>
 
         <button onClick={startClassic}>
           Modalità Classica

@@ -140,3 +140,35 @@ button{
   border-radius:999px;
   z-index:9999;
 }
+/* Testi schermate interne */
+
+.vote-screen h2,
+.vote-screen h3,
+.vote-screen p,
+.vote-screen label {
+  color: #b30000;
+  font-weight: 600;
+}
+
+/* nomi categorie voto */
+.vote-category {
+  color: #b30000;
+  font-weight: bold;
+}
+
+/* testo risultati */
+.result-screen {
+  color: #b30000;
+}
+
+/* titoli schermate */
+.screen-title {
+  color: #b30000;
+}
+.background-overlay {
+  position: fixed;
+  inset: 0;
+  backdrop-filter: blur(6px);
+  background: rgba(255,255,255,0.25);
+  z-index: -1;
+}
