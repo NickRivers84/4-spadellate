@@ -76,6 +76,32 @@
   margin-top:min(200px, 38vw);
   }
   
+  /* Barra con bottone Indietro */
+  .topBar{
+  width:100%;
+  max-width:320px;
+  margin-bottom:12px;
+  display:flex;
+  justify-content:flex-start;
+  }
+  .backButton{
+  padding:8px 14px;
+  font-size:14px;
+  }
+  .errorMsg{
+  color:#c00;
+  background:rgba(255,255,255,0.9);
+  padding:10px 14px;
+  border-radius:8px;
+  margin-bottom:12px;
+  font-size:14px;
+  max-width:320px;
+  }
+  button:disabled{
+  opacity:0.8;
+  cursor:not-allowed;
+  }
+  
   /* TITOLI */
   
   h1{

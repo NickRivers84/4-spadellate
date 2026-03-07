@@ -1,7 +1,7 @@
 import "./App.css"
 import { useState, useEffect } from "react"
 import { db, auth, googleProvider } from "./firebase"
-import { signInWithPopup, onAuthStateChanged } from "firebase/auth"
+import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth"
 import { collection, addDoc, doc, setDoc } from "firebase/firestore"
 import { BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts"
 
@@ -16,12 +16,14 @@ const [mode,setMode] = useState(null)
 const [players,setPlayers] = useState(4)
 const [restaurants,setRestaurants] = useState(4)
 
-
 const [playerNames,setPlayerNames] = useState([])
 const [restaurantNames,setRestaurantNames] = useState([])
 const [votes,setVotes] = useState([])
 const [currentRestaurant,setCurrentRestaurant] = useState(0)
 const [reveal,setReveal] = useState(false)
+
+const [loading,setLoading] = useState(null)
+const [error,setError] = useState(null)
 
 const voteCategories=[
 {key:"location",label:"Location"},
@@ -48,24 +50,44 @@ setScreen("home")
 })
 },[])
 
+function goBack(){
+setError(null)
+if(screen==="home"){ signOut(auth).then(()=>{ setScreen("login") }) }
+else if(screen==="setup"){ setScreen("home") }
+else if(screen==="vote"){ setScreen("setup") }
+else if(screen==="result"){ setScreen("home"); setReveal(false) }
+}
+
 async function login(){
+setError(null)
+setLoading("login")
+try{
 await signInWithPopup(auth,googleProvider)
+}catch(e){
+setError(e?.message||"Errore di accesso. Riprova.")
+}finally{
+setLoading(null)
+}
 }
 
 async function createGame(){
-
+setError(null)
+setLoading("createGame")
+try{
 setBg("bg2")
-
 const docRef = await addDoc(collection(db,"games"),{
 owner:user.uid,
 players,
 restaurants,
 mode
 })
-
 setGameId(docRef.id)
 setScreen("setup")
-
+}catch(e){
+setError(e?.message||"Errore creazione partita. Riprova.")
+}finally{
+setLoading(null)
+}
 }
 
 function updatePlayerName(i,val){
@@ -85,23 +107,23 @@ setRestaurantNames(arr)
 }
 
 async function startGame(){
-
+setError(null)
+setLoading("startGame")
 const votesInit=[]
-
-for(let i=0;i<restaurants;i++){
-votesInit.push({...emptyVotes})
-}
-
+for(let i=0;i<restaurants;i++) votesInit.push({...emptyVotes})
 setVotes(votesInit)
-
+try{
 await setDoc(doc(db,"games",gameId),{
 playerNames,
 restaurantNames,
 votes:votesInit
 },{merge:true})
-
 setScreen("vote")
-
+}catch(e){
+setError(e?.message||"Errore avvio votazione. Riprova.")
+}finally{
+setLoading(null)
+}
 }
 
 function selectVote(category,value){
@@ -117,19 +139,16 @@ setVotes(updated)
 
 }
 
-function nextRestaurant(){
-
+async function nextRestaurant(){
+try{
+await setDoc(doc(db,"games",gameId),{ votes },{merge:true})
+}catch(_){}
 if(currentRestaurant < restaurants-1){
-
 setCurrentRestaurant(currentRestaurant+1)
-
 }else{
-
 setBg("bg3")
 setScreen("result")
-
 }
-
 }
 
 function ranking(){
@@ -160,8 +179,9 @@ return(
 
 <div className="homeContent">
 <h1>Forchette & Polpette</h1>
-<button onClick={login}>
-Login con Google
+{error && <p className="errorMsg">{error}</p>}
+<button onClick={login} disabled={loading==="login"}>
+{loading==="login" ? "Caricamento…" : "Login con Google"}
 </button>
 </div>
 
@@ -170,7 +190,10 @@ Login con Google
 {screen==="home" &&(
 
 <div className="homeContent">
-
+      <div className="topBar">
+      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
+      </div>
+      {error && <p className="errorMsg">{error}</p>}
       <h2>Benvenuto {user?.displayName}</h2>
       
       <h3>Modalità gioco</h3>
@@ -218,8 +241,8 @@ Login con Google
       <button className="selected">Classica</button>
       <p>4 giocatori e 4 ristoranti</p>
       <div className="startButtonWrap">
-      <button onClick={createGame}>
-      Avvia partita
+      <button onClick={createGame} disabled={loading==="createGame"}>
+      {loading==="createGame" ? "Caricamento…" : "Avvia partita"}
       </button>
       </div>
       </>
@@ -253,8 +276,8 @@ Login con Google
       </div>
       
       <div className="startButtonWrap">
-      <button onClick={createGame}>
-      Avvia partita
+      <button onClick={createGame} disabled={loading==="createGame"}>
+      {loading==="createGame" ? "Caricamento…" : "Avvia partita"}
       </button>
       </div>
       </>
@@ -279,8 +302,8 @@ Login con Google
       <p>Ristoranti: 1 (One shot)</p>
       
       <div className="startButtonWrap">
-      <button onClick={createGame}>
-      Avvia partita
+      <button onClick={createGame} disabled={loading==="createGame"}>
+      {loading==="createGame" ? "Caricamento…" : "Avvia partita"}
       </button>
       </div>
       </>
@@ -293,7 +316,10 @@ Login con Google
       {screen==="setup" &&(
       
       <>
-      
+      <div className="topBar">
+      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
+      </div>
+      {error && <p className="errorMsg">{error}</p>}
       <h2>Imposta la partita</h2>
       
       <h3>Giocatori</h3>
@@ -322,8 +348,8 @@ Login con Google
       />
       ))}
       
-      <button onClick={startGame}>
-      Inizia votazione
+      <button onClick={startGame} disabled={loading==="startGame"}>
+      {loading==="startGame" ? "Caricamento…" : "Inizia votazione"}
       </button>
       
       </>
@@ -334,7 +360,9 @@ Login con Google
       {screen==="vote" &&(
 
 <>
-
+<div className="topBar">
+<button type="button" className="backButton" onClick={goBack}>Indietro</button>
+</div>
 <h2>{restaurantNames[currentRestaurant]}</h2>
 
 {voteCategories.map(cat=>(
@@ -379,7 +407,9 @@ Prossimo ristorante
 {screen==="result" &&(
 
 <>
-
+<div className="topBar">
+<button type="button" className="backButton" onClick={goBack}>Indietro</button>
+</div>
 <h2>Classifica</h2>
 
 {!reveal &&(
