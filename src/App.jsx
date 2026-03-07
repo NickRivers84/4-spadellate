@@ -200,11 +200,11 @@ Personalizzata
 
 </div>
 
-{mode==="custom" &&(
+      {mode==="custom" &&(
 
 <>
 
-<h3>Numero giocatori: {players}</h3>
+      <h3 className="customLabel">Numero giocatori: {players}</h3>
 
 <input
 type="range"
@@ -214,7 +214,7 @@ value={players}
 onChange={(e)=>setPlayers(parseInt(e.target.value))}
 />
 
-<h3>Numero ristoranti: {restaurants}</h3>
+      <h3 className="customLabel">Numero ristoranti: {restaurants}</h3>
 
 <input
 type="range"
@@ -234,10 +234,50 @@ onChange={(e)=>setRestaurants(parseInt(e.target.value))}
 
 </>
 
-)}
-
-
-{screen==="vote" &&(
+      )}
+      
+      {screen==="setup" &&(
+      
+      <>
+      
+      <h2>Imposta la partita</h2>
+      
+      <h3>Giocatori</h3>
+      
+      {Array.from({length:players}).map((_,i)=>(
+      
+      <input
+      key={i}
+      type="text"
+      placeholder={`Nome giocatore ${i+1}`}
+      value={playerNames[i]||""}
+      onChange={(e)=>updatePlayerName(i,e.target.value)}
+      />
+      ))}
+      
+      <h3>Ristoranti</h3>
+      
+      {Array.from({length:restaurants}).map((_,i)=>(
+      
+      <input
+      key={i}
+      type="text"
+      placeholder={`Nome ristorante ${i+1}`}
+      value={restaurantNames[i]||""}
+      onChange={(e)=>updateRestaurantName(i,e.target.value)}
+      />
+      ))}
+      
+      <button onClick={startGame}>
+      Inizia votazione
+      </button>
+      
+      </>
+      
+      )}
+      
+      
+      {screen==="vote" &&(
 
 <>
 

@@ -79,6 +79,11 @@
   h3{
   margin:15px 0;
   }
+
+  /* Etichette rosse per la modalità personalizzata */
+  .customLabel{
+  color:red;
+  }
   
   /* INPUT */
   
