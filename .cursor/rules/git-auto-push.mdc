@@ -1,0 +1,13 @@
+---
+description: Commit e push automatici dopo modifiche al codice
+alwaysApply: true
+---
+
+# Git: commit e push automatici
+
+- Dopo aver modificato file nel progetto, **esegui sempre**:
+  1. `git add` dei file modificati (o `git add -A` se appropriato)
+  2. `git commit -m "messaggio descrittivo"` (messaggio in italiano, breve e chiaro)
+  3. `git push`
+- **Non chiedere conferma** all'utente per commit o push: esegui direttamente.
+- Usa PowerShell-compatibile: comandi separati con `;` se necessario (es. `git add .; git commit -m "..."`).
