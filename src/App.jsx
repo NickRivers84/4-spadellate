@@ -400,15 +400,10 @@ Apri la busta
 ))}
 
 <BarChart width={320} height={300} data={data}>
-
-<XAxis dataKey="name"/>
-
-<YAxis/>
-
-<Tooltip/>
-
-<Bar dataKey="total"/>
-
+<XAxis dataKey="name" tick={{ fill: '#c00', fontSize: 12 }} stroke="#c00"/>
+<YAxis tick={{ fill: '#c00', fontSize: 12 }} stroke="#c00"/>
+<Tooltip contentStyle={{ color: '#c00', textShadow: '0 0 0 #000' }} itemStyle={{ color: '#c00' }} labelStyle={{ color: '#c00' }}/>
+<Bar dataKey="total" fill="#ff5a2c"/>
 </BarChart>
 
 </>

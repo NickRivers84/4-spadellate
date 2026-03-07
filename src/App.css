@@ -74,16 +74,43 @@
   /* TITOLI */
   
   h1{
-  font-size:34px;
+  font-size:24px;
   margin-bottom:30px;
+  color:red;
+  text-shadow:
+  -0.5px -0.5px 0 #000,
+  0.5px -0.5px 0 #000,
+  -0.5px 0.5px 0 #000,
+  0.5px 0.5px 0 #000;
   }
   
   h2{
   margin-bottom:20px;
+  color:red;
+  text-shadow:
+  -0.5px -0.5px 0 #000,
+  0.5px -0.5px 0 #000,
+  -0.5px 0.5px 0 #000,
+  0.5px 0.5px 0 #000;
   }
   
   h3{
   margin:15px 0;
+  color:red;
+  text-shadow:
+  -0.5px -0.5px 0 #000,
+  0.5px -0.5px 0 #000,
+  -0.5px 0.5px 0 #000,
+  0.5px 0.5px 0 #000;
+  }
+  
+  .app p{
+  color:red;
+  text-shadow:
+  -0.5px -0.5px 0 #000,
+  0.5px -0.5px 0 #000,
+  -0.5px 0.5px 0 #000,
+  0.5px 0.5px 0 #000;
   }
 
   /* Etichette rosse per la modalità personalizzata */
@@ -115,7 +142,12 @@
   
   background:#ff5a2c;
   
-  color:red;
+  color:red !important;
+  text-shadow:
+  -0.5px -0.5px 0 #000,
+  0.5px -0.5px 0 #000,
+  -0.5px 0.5px 0 #000,
+  0.5px 0.5px 0 #000;
   
   border:none;
   
@@ -177,7 +209,12 @@
   border-radius:50%;
   
   background:white;
-  color:red;
+  color:red !important;
+  text-shadow:
+  -0.5px -0.5px 0 #000,
+  0.5px -0.5px 0 #000,
+  -0.5px 0.5px 0 #000,
+  0.5px 0.5px 0 #000;
   
   font-weight:bold;
   
