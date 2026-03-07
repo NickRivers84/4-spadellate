@@ -1,3 +1,4 @@
+import "./App.css"
 import { useState, useEffect } from "react"
 import { db, auth, googleProvider } from "./firebase"
 import { signInWithPopup, onAuthStateChanged } from "firebase/auth"
@@ -11,8 +12,10 @@ const [screen,setScreen] = useState("login")
 const [bg,setBg] = useState("bg1")
 const [gameId,setGameId] = useState(null)
 
-const players = 4
-const restaurants = 4
+const [mode,setMode] = useState("classic")
+const [players,setPlayers] = useState(4)
+const [restaurants,setRestaurants] = useState(4)
+
 
 const [playerNames,setPlayerNames] = useState([])
 const [restaurantNames,setRestaurantNames] = useState([])
@@ -54,7 +57,10 @@ async function createGame(){
 setBg("bg2")
 
 const docRef = await addDoc(collection(db,"games"),{
-owner:user.uid
+owner:user.uid,
+players,
+restaurants,
+mode
 })
 
 setGameId(docRef.id)
@@ -170,54 +176,66 @@ Login con Google
 
 <h2>Benvenuto {user?.displayName}</h2>
 
-<button onClick={createGame}>
-Crea partita
+<h3>Modalità gioco</h3>
+
+<div className="modeButtons">
+
+<button
+className={mode==="classic"?"selected":""}
+onClick={()=>{
+setMode("classic")
+setPlayers(4)
+setRestaurants(4)
+}}
+>
+Classica
 </button>
 
-</>
+<button
+className={mode==="custom"?"selected":""}
+onClick={()=>setMode("custom")}
+>
+Personalizzata
+</button>
 
-)}
+</div>
 
-{screen==="setup" &&(
+{mode==="custom" &&(
 
 <>
 
-<h2>Setup partita</h2>
-
-<p>Giocatori: 4</p>
-<p>Ristoranti: 4</p>
-
-<h3>Nomi giocatori</h3>
-
-{Array.from({length:players}).map((_,i)=>(
+<h3>Numero giocatori: {players}</h3>
 
 <input
-key={i}
-placeholder={`Giocatore ${i+1}`}
-onChange={(e)=>updatePlayerName(i,e.target.value)}
+type="range"
+min="2"
+max="8"
+value={players}
+onChange={(e)=>setPlayers(parseInt(e.target.value))}
 />
 
-))}
-
-<h3>Nomi ristoranti</h3>
-
-{Array.from({length:restaurants}).map((_,i)=>(
+<h3>Numero ristoranti: {restaurants}</h3>
 
 <input
-key={i}
-placeholder={`Ristorante ${i+1}`}
-onChange={(e)=>updateRestaurantName(i,e.target.value)}
+type="range"
+min="2"
+max="8"
+value={restaurants}
+onChange={(e)=>setRestaurants(parseInt(e.target.value))}
 />
-
-))}
-
-<button onClick={startGame}>
-Inizia partita
-</button>
 
 </>
 
 )}
+
+<button onClick={createGame}>
+                One shot
+                </button>
+
+</>
+
+)}
+
 
 {screen==="vote" &&(
 
