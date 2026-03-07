@@ -2,7 +2,7 @@ import "./App.css"
 import { useState, useEffect } from "react"
 import { db, auth, googleProvider } from "./firebase"
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth"
-import { collection, addDoc, doc, setDoc, getDoc, getDocs, query, where } from "firebase/firestore"
+import { collection, addDoc, doc, setDoc, getDoc, getDocs, query, where, deleteDoc } from "firebase/firestore"
 import { BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts"
 
 export default function App(){
@@ -92,6 +92,17 @@ setScreen(status)
 setError(e?.message||"Errore caricamento partita.")
 }finally{
 setLoadingGameId(null)
+}
+}
+
+async function deleteGame(id,e){
+e.stopPropagation()
+if(!confirm("Eliminare questa partita?")) return
+try{
+await deleteDoc(doc(db,"games",id))
+setMyGames(prev=>prev.filter(g=>g.id!==id))
+}catch(err){
+setError(err?.message||"Errore eliminazione.")
 }
 }
 
@@ -267,9 +278,14 @@ return(
       {myGames.map((g)=>(
       <div key={g.id} className="gameItem">
       <span className="gameLabel">{g.mode==="classic"?"Classica":g.mode==="custom"?"Personalizzata":"One shot"} – {g.restaurants} ristoranti</span>
+      <div className="gameItemActions">
       <button type="button" className="smallButton" onClick={()=>loadGame(g.id)} disabled={loadingGameId!=null}>
       {loadingGameId===g.id ? "Caricamento…" : "Riprendi"}
       </button>
+      <button type="button" className="smallButton deleteButton" onClick={(e)=>deleteGame(g.id,e)}>
+      Elimina
+      </button>
+      </div>
       </div>
       ))}
       </div>

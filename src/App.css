@@ -115,9 +115,21 @@
   flex:1;
   text-align:left;
   }
+  .gameItemActions{
+  display:flex;
+  gap:8px;
+  flex-shrink:0;
+  }
   .smallButton{
   padding:6px 14px;
   font-size:13px;
+  }
+  .smallButton.deleteButton{
+  background:#a52a2a;
+  border-color:rgba(255,255,255,0.8);
+  }
+  .smallButton.deleteButton:hover{
+  background:#8b2222;
   }
   button:disabled{
   opacity:0.8;
