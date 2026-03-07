@@ -89,6 +89,11 @@
   font-size:14px;
   max-width:320px;
   }
+  .hintMsg{
+  color:#a00;
+  font-size:14px;
+  margin:8px 0;
+  }
   button:disabled{
   opacity:0.8;
   cursor:not-allowed;

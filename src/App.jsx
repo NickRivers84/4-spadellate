@@ -109,7 +109,17 @@ setRestaurantNames(arr)
 
 }
 
+function isSetupValid(){
+const playersOk = Array.from({length:players}).every((_,i)=> (playerNames[i]||"").trim()!=="")
+const restaurantsOk = Array.from({length:restaurants}).every((_,i)=> (restaurantNames[i]||"").trim()!=="")
+return playersOk && restaurantsOk
+}
+
 async function startGame(){
+if(!isSetupValid()){
+setError("Inserisci tutti i nomi di giocatori e ristoranti.")
+return
+}
 setError(null)
 setLoading("startGame")
 const votesInit=[]
@@ -332,7 +342,7 @@ return(
       type="text"
       placeholder={`Nome giocatore ${i+1}`}
       value={playerNames[i]||""}
-      onChange={(e)=>updatePlayerName(i,e.target.value)}
+      onChange={(e)=>{ setError(null); updatePlayerName(i,e.target.value) }}
       />
       ))}
       
@@ -345,11 +355,13 @@ return(
       type="text"
       placeholder={`Nome ristorante ${i+1}`}
       value={restaurantNames[i]||""}
-      onChange={(e)=>updateRestaurantName(i,e.target.value)}
+      onChange={(e)=>{ setError(null); updateRestaurantName(i,e.target.value) }}
       />
       ))}
       
-      <button onClick={startGame} disabled={loading==="startGame"}>
+      {!isSetupValid() && <p className="hintMsg">Compila tutti i nomi per continuare.</p>}
+      
+      <button onClick={startGame} disabled={loading==="startGame" || !isSetupValid()}>
       {loading==="startGame" ? "Caricamento…" : "Inizia votazione"}
       </button>
       
