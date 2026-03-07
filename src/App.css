@@ -25,11 +25,11 @@
   transition:background-image 0.8s ease-in-out;
   }
   
-  /* Logo solo in fascia alta (intestazione), niente sovrapposizione al contenuto */
+  /* Logo in fascia alta, più grande (non rimpicciolito), ancorato in alto */
   .bg1{
   background-image:url("/backgrounds/bg-1.png");
   background-position:50% 0;
-  background-size:auto 26vh;
+  background-size:auto 44vh;
   }
   
   .bg2{
@@ -57,22 +57,30 @@
   text-align:center;
   }
   
-  /* Contenuto sotto la fascia logo (login, home) */
-  .homeContent{
-  margin-top:22vh;
+  .appContent{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  width:100%;
   }
   
-  /* Barra con bottone Indietro */
-  .topBar{
+  /* Contenuto sotto la fascia logo (login, home) */
+  .homeContent{
+  margin-top:46vh;
+  }
+  
+  /* Bottone Indietro sempre in basso e centrato */
+  .bottomBar{
   width:100%;
-  max-width:320px;
-  margin-bottom:12px;
+  padding:20px 0 24px;
   display:flex;
-  justify-content:flex-start;
+  justify-content:center;
+  flex-shrink:0;
   }
   .backButton{
-  padding:8px 14px;
-  font-size:14px;
+  padding:10px 20px;
+  font-size:15px;
   }
   .errorMsg{
   color:#c00;

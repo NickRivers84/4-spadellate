@@ -175,6 +175,8 @@ return(
 
 <div className="app">
 
+<div className="appContent">
+
 {screen==="login" &&(
 
 <div className="homeContent">
@@ -190,9 +192,6 @@ return(
 {screen==="home" &&(
 
 <div className="homeContent">
-      <div className="topBar">
-      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
-      </div>
       {error && <p className="errorMsg">{error}</p>}
       <h2>Benvenuto {user?.displayName}</h2>
       
@@ -316,9 +315,6 @@ return(
       {screen==="setup" &&(
       
       <>
-      <div className="topBar">
-      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
-      </div>
       {error && <p className="errorMsg">{error}</p>}
       <h2>Imposta la partita</h2>
       
@@ -360,9 +356,6 @@ return(
       {screen==="vote" &&(
 
 <>
-<div className="topBar">
-<button type="button" className="backButton" onClick={goBack}>Indietro</button>
-</div>
 <h2>{restaurantNames[currentRestaurant]}</h2>
 
 {voteCategories.map(cat=>(
@@ -407,9 +400,6 @@ Prossimo ristorante
 {screen==="result" &&(
 
 <>
-<div className="topBar">
-<button type="button" className="backButton" onClick={goBack}>Indietro</button>
-</div>
 <h2>Classifica</h2>
 
 {!reveal &&(
@@ -451,6 +441,14 @@ Apri la busta
 
 </>
 
+)}
+
+</div>
+
+{screen!=="login" && (
+<div className="bottomBar">
+<button type="button" className="backButton" onClick={goBack}>Indietro</button>
+</div>
 )}
 
 </div>
