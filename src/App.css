@@ -25,13 +25,13 @@
   transition:background-image 0.8s ease-in-out;
   }
   
-  /* Login/Home: logo in flusso, altezza tale che contenuto resta in vista */
+  /* Login/Home: logo compatto (36vh) così Benvenuto e bottoni stanno in schermata */
   .background.bg1{
   position:relative;
   z-index:0;
-  height:42vh;
-  min-height:180px;
-  background-image:url("/backgrounds/bg-1.png");
+  height:36vh;
+  min-height:160px;
+  background-image:url("/backgrounds/bg-1.png?v=2");
   background-size:contain;
   background-position:top center;
   }
