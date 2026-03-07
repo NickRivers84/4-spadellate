@@ -7,35 +7,29 @@
   body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   overflow-x:hidden;
+  background-color:#f6efe6;
   }
   
   /* BACKGROUND */
   
   .background{
-  
   position:fixed;
-  
   top:0;
   left:0;
-  
   width:100vw;
   height:100vh;
-  
   background-size:contain;
   background-position:top center;
   background-repeat:no-repeat;
-  
   z-index:-1;
-  
   transition:background-image 0.8s ease-in-out;
-  
   }
   
-  /* Sfondo con logo Forchette & Polpette: in alto a mo' di intestazione */
+  /* Logo solo in fascia alta (intestazione), niente sovrapposizione al contenuto */
   .bg1{
   background-image:url("/backgrounds/bg-1.png");
   background-position:50% 0;
-  background-size:contain;
+  background-size:auto 26vh;
   }
   
   .bg2{
@@ -46,34 +40,26 @@
   background-image:url("/backgrounds/bg-3.png");
   }
   
-  
   /* APP */
   
   .app{
-  
   min-height:100vh;
-  
   display:flex;
   flex-direction:column;
-  
   align-items:center;
-  
   padding:40px 20px;
-  
   color:red;
   text-shadow:
   -0.5px -0.5px 0 #000,
   0.5px -0.5px 0 #000,
   -0.5px 0.5px 0 #000,
   0.5px 0.5px 0 #000;
-  
   text-align:center;
-  
   }
   
-  /* Schermate con logo (login, home): spazio per logo a intestazione */
+  /* Contenuto sotto la fascia logo (login, home) */
   .homeContent{
-  margin-top:min(200px, 38vw);
+  margin-top:22vh;
   }
   
   /* Barra con bottone Indietro */
