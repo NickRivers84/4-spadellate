@@ -158,15 +158,12 @@ return(
 
 {screen==="login" &&(
 
-<>
-
+<div className="homeContent">
 <h1>Forchette & Polpette</h1>
-
 <button onClick={login}>
 Login con Google
 </button>
-
-</>
+</div>
 
 )}
 

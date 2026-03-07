@@ -27,15 +27,15 @@
   
   z-index:-1;
   
-  /* animazione cambio sfondo */
   transition:background-image 0.8s ease-in-out;
   
   }
   
-  /* IMMAGINI */
-  
+  /* Sfondo con logo Forchette & Polpette: in alto a mo' di intestazione */
   .bg1{
   background-image:url("/backgrounds/bg-1.png");
+  background-position:50% 0;
+  background-size:contain;
   }
   
   .bg2{
@@ -71,9 +71,9 @@
   
   }
   
-  /* Schermata home: abbassiamo titoli e bottoni per non sovrapporre il logo */
+  /* Schermate con logo (login, home): spazio per logo a intestazione */
   .homeContent{
-  margin-top:min(160px, 28vw);
+  margin-top:min(200px, 38vw);
   }
   
   /* TITOLI */
@@ -141,7 +141,7 @@
   
   }
   
-  /* BOTTONI: testo bianco su sfondo arancione per leggibilità */
+  /* BOTTONI: testo bianco, contorno bianco su tutti */
   
   button{
   
@@ -154,7 +154,7 @@
   -0.5px 0.5px 0 #000,
   0.5px 0.5px 0 #000;
   
-  border:none;
+  border:2px solid #fff;
   
   padding:14px 20px;
   
@@ -230,6 +230,7 @@
   height:40px;
   
   border-radius:50%;
+  border:2px solid #ff5a2c;
   
   background:white;
   color:red !important;
