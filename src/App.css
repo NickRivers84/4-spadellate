@@ -62,9 +62,9 @@
   width:100%;
   }
   
-  /* Contenuto sotto la fascia logo (login, home) */
+  /* Contenuto sotto il logo: margine alto così testo e bottoni non si sovrappongono */
   .homeContent{
-  margin-top:min(200px, 36vw);
+  margin-top:45vh;
   }
   
   /* Bottone Indietro sempre in basso e centrato */
