@@ -68,7 +68,14 @@
   margin-top:52vh;
   }
   
-  /* Bottone Indietro sempre in basso e centrato */
+  .topBarHome{
+  width:100%;
+  max-width:320px;
+  margin-bottom:12px;
+  display:flex;
+  justify-content:flex-start;
+  }
+  /* Bottone Indietro in basso (setup, vote, result) */
   .bottomBar{
   width:100%;
   padding:20px 0 24px;
@@ -93,6 +100,10 @@
   color:#a00;
   font-size:14px;
   margin:8px 0;
+  }
+  .sectionTitle{
+  margin-top:24px;
+  margin-bottom:8px;
   }
   .gameList{
   width:100%;

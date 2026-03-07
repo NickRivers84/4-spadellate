@@ -268,30 +268,11 @@ return(
 {screen==="home" &&(
 
 <div className="homeContent">
+      <div className="topBarHome">
+      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
+      </div>
       {error && <p className="errorMsg">{error}</p>}
       <h2>Benvenuto {user?.displayName}</h2>
-      
-      {myGames.length>0 && mode===null && (
-      <>
-      <h3>Le tue partite</h3>
-      <div className="gameList">
-      {myGames.map((g)=>(
-      <div key={g.id} className="gameItem">
-      <span className="gameLabel">{g.mode==="classic"?"Classica":g.mode==="custom"?"Personalizzata":"One shot"} – {g.restaurants} ristoranti</span>
-      <div className="gameItemActions">
-      <button type="button" className="smallButton" onClick={()=>loadGame(g.id)} disabled={loadingGameId!=null}>
-      {loadingGameId===g.id ? "Caricamento…" : "Riprendi"}
-      </button>
-      <button type="button" className="smallButton deleteButton" onClick={(e)=>deleteGame(g.id,e)}>
-      Elimina
-      </button>
-      </div>
-      </div>
-      ))}
-      </div>
-      </>
-      )}
-      
       <h3>Modalità gioco</h3>
       
       {mode===null && (
@@ -400,6 +381,27 @@ return(
       <button onClick={createGame} disabled={loading==="createGame"}>
       {loading==="createGame" ? "Caricamento…" : "Avvia partita"}
       </button>
+      </div>
+      </>
+      )}
+
+      {myGames.length>0 && mode===null && (
+      <>
+      <h3 className="sectionTitle">Le tue partite</h3>
+      <div className="gameList">
+      {myGames.map((g)=>(
+      <div key={g.id} className="gameItem">
+      <span className="gameLabel">{g.mode==="classic"?"Classica":g.mode==="custom"?"Personalizzata":"One shot"} – {g.restaurants} ristoranti</span>
+      <div className="gameItemActions">
+      <button type="button" className="smallButton" onClick={()=>loadGame(g.id)} disabled={loadingGameId!=null}>
+      {loadingGameId===g.id ? "Caricamento…" : "Riprendi"}
+      </button>
+      <button type="button" className="smallButton deleteButton" onClick={(e)=>deleteGame(g.id,e)}>
+      Elimina
+      </button>
+      </div>
+      </div>
+      ))}
       </div>
       </>
       )}
@@ -543,7 +545,7 @@ Apri la busta
 
 </div>
 
-{screen!=="login" && (
+{screen!=="login" && screen!=="home" && (
 <div className="bottomBar">
 <button type="button" className="backButton" onClick={goBack}>Indietro</button>
 </div>
