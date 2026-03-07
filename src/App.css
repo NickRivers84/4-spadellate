@@ -174,21 +174,32 @@
   transform:scale(1.05);
   }
   
-  /* Bottone modalità selezionata: sfondo rosso scuro, testo sempre bianco (leggibile) */
+  /* Bottone modalità selezionata: stesso arancione degli altri, bordo bianco per evidenziare */
   button.selected{
-  background:#a52828 !important;
+  background:#ff5a2c !important;
   color:#fff !important;
   border:2px solid #fff;
   }
   
-  /* SLIDER */
-  
-  input[type="range"]{
-  
-  width:260px;
-  
+  /* SLIDER: centrati orizzontalmente */
+  .sliderWrap{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  width:100%;
   margin:10px 0;
-  
+  }
+  input[type="range"]{
+  width:260px;
+  max-width:90vw;
+  margin:10px auto;
+  display:block;
+  }
+  .startButtonWrap{
+  width:100%;
+  margin-top:20px;
+  display:flex;
+  justify-content:center;
   }
   
   /* VOTI */

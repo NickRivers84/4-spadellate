@@ -220,9 +220,11 @@ Login con Google
       <>
       <button className="selected">Classica</button>
       <p>4 giocatori e 4 ristoranti</p>
+      <div className="startButtonWrap">
       <button onClick={createGame}>
       Avvia partita
       </button>
+      </div>
       </>
       )}
       
@@ -231,6 +233,7 @@ Login con Google
       <>
       <button className="selected">Personalizzata</button>
       
+      <div className="sliderWrap">
       <h3 className="customLabel">Numero giocatori: {players}</h3>
       <input
       type="range"
@@ -239,7 +242,9 @@ Login con Google
       value={players}
       onChange={(e)=>setPlayers(parseInt(e.target.value))}
       />
+      </div>
       
+      <div className="sliderWrap">
       <h3 className="customLabel">Numero ristoranti: {restaurants}</h3>
       <input
       type="range"
@@ -248,10 +253,13 @@ Login con Google
       value={restaurants}
       onChange={(e)=>setRestaurants(parseInt(e.target.value))}
       />
+      </div>
       
+      <div className="startButtonWrap">
       <button onClick={createGame}>
       Avvia partita
       </button>
+      </div>
       </>
       )}
       
@@ -260,6 +268,7 @@ Login con Google
       <>
       <button className="selected">One shot</button>
       
+      <div className="sliderWrap">
       <h3 className="customLabel">Numero giocatori: {players}</h3>
       <input
       type="range"
@@ -268,12 +277,15 @@ Login con Google
       value={players}
       onChange={(e)=>setPlayers(parseInt(e.target.value))}
       />
+      </div>
       
       <p>Ristoranti: 1 (One shot)</p>
       
+      <div className="startButtonWrap">
       <button onClick={createGame}>
       Avvia partita
       </button>
+      </div>
       </>
       )}
 
