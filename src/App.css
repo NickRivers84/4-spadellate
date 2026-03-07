@@ -75,6 +75,14 @@
   display:flex;
   justify-content:flex-start;
   }
+  .homeBackWrap{
+  width:100%;
+  max-width:320px;
+  margin-top:8px;
+  margin-bottom:12px;
+  display:flex;
+  justify-content:flex-start;
+  }
   /* Bottone Indietro in basso (setup, vote, result) */
   .bottomBar{
   width:100%;

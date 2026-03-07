@@ -268,14 +268,12 @@ return(
 {screen==="home" &&(
 
 <div className="homeContent">
-      <div className="topBarHome">
-      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
-      </div>
       {error && <p className="errorMsg">{error}</p>}
       <h2>Benvenuto {user?.displayName}</h2>
       <h3>Modalità gioco</h3>
       
       {mode===null && (
+      <>
       <div className="modeButtons">
       
       <button
@@ -309,11 +307,18 @@ return(
       </button>
       
       </div>
+      <div className="homeBackWrap">
+      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
+      </div>
+      </>
       )}
       
       {/* Dettaglio modalità CLASSICA: 4 giocatori, 4 ristoranti non modificabili */}
       {mode==="classic" && (
       <>
+      <div className="homeBackWrap">
+      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
+      </div>
       <button className="selected">Classica</button>
       <p>4 giocatori e 4 ristoranti</p>
       <div className="startButtonWrap">
@@ -327,6 +332,9 @@ return(
       {/* Dettaglio modalità PERSONALIZZATA: slider giocatori e ristoranti da 2 a 8 */}
       {mode==="custom" && (
       <>
+      <div className="homeBackWrap">
+      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
+      </div>
       <button className="selected">Personalizzata</button>
       
       <div className="sliderWrap">
@@ -362,6 +370,9 @@ return(
       {/* Dettaglio modalità ONE SHOT: 1 ristorante, slider solo per numero giocatori */}
       {mode==="oneshot" && (
       <>
+      <div className="homeBackWrap">
+      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
+      </div>
       <button className="selected">One shot</button>
       
       <div className="sliderWrap">
