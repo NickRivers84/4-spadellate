@@ -18,6 +18,8 @@ const [restaurants,setRestaurants] = useState(4)
 
 const [playerNames,setPlayerNames] = useState([])
 const [restaurantNames,setRestaurantNames] = useState([])
+const [playerAvatars,setPlayerAvatars] = useState([])
+const [restaurantAvatars,setRestaurantAvatars] = useState([])
 const [votes,setVotes] = useState([])
 const [currentRestaurant,setCurrentRestaurant] = useState(0)
 const [reveal,setReveal] = useState(false)
@@ -34,6 +36,9 @@ const voteCategories=[
 {key:"price",label:"Conto"},
 {key:"bonus",label:"Bonus"}
 ]
+
+const PLAYER_AVATARS = ["👤","👩","👨","🧑","👴","👵","🧒","👦","👧","🧔","🧑‍🍳","🦸"]
+const RESTAURANT_AVATARS = ["🍕","🍔","🍝","🥗","🍣","🌮","🍳","🥐","☕","🍰","🍜","🥪"]
 
 const emptyVotes={
 location:null,
@@ -80,6 +85,8 @@ setRestaurants(d.restaurants||4)
 setMode(d.mode||"classic")
 setPlayerNames(d.playerNames||[])
 setRestaurantNames(d.restaurantNames||[])
+setPlayerAvatars(d.playerAvatars||[])
+setRestaurantAvatars(d.restaurantAvatars||[])
 setVotes(d.votes||[])
 setCurrentRestaurant(d.currentRestaurant!= null ? Math.min(d.currentRestaurant, (d.restaurants||4)-1) : 0)
 setReveal(false)
@@ -143,6 +150,8 @@ status:"setup",
 createdAt:Date.now()
 })
 setGameId(docRef.id)
+setPlayerAvatars([])
+setRestaurantAvatars([])
 setScreen("setup")
 }catch(e){
 setError(e?.message||"Errore creazione partita. Riprova.")
@@ -167,6 +176,24 @@ setRestaurantNames(arr)
 
 }
 
+function updatePlayerAvatar(i,idx){
+setPlayerAvatars(prev=>{
+const next=[...prev]
+while(next.length<=i) next.push(0)
+next[i]=idx
+return next.slice(0,players)
+})
+}
+
+function updateRestaurantAvatar(i,idx){
+setRestaurantAvatars(prev=>{
+const next=[...prev]
+while(next.length<=i) next.push(0)
+next[i]=idx
+return next.slice(0,restaurants)
+})
+}
+
 function isSetupValid(){
 const playersOk = Array.from({length:players}).every((_,i)=> (playerNames[i]||"").trim()!=="")
 const restaurantsOk = Array.from({length:restaurants}).every((_,i)=> (restaurantNames[i]||"").trim()!=="")
@@ -187,6 +214,8 @@ try{
 await setDoc(doc(db,"games",gameId),{
 playerNames,
 restaurantNames,
+playerAvatars: playerAvatars.slice(0,players),
+restaurantAvatars: restaurantAvatars.slice(0,restaurants),
 votes:votesInit,
 status:"vote"
 },{merge:true})
@@ -435,27 +464,53 @@ return(
       <h3>Giocatori</h3>
       
       {Array.from({length:players}).map((_,i)=>(
-      
+      <div key={i} className="setupRow">
+      <div className="avatarPicker">
+      {PLAYER_AVATARS.map((emoji,idx)=>(
+      <button
+      key={idx}
+      type="button"
+      className={`avatarOption ${(playerAvatars[i] ?? 0)===idx ? "selected" : ""}`}
+      onClick={()=>updatePlayerAvatar(i,idx)}
+      title={`Avatar ${idx+1}`}
+      >
+      {emoji}
+      </button>
+      ))}
+      </div>
       <input
-      key={i}
       type="text"
       placeholder={`Nome giocatore ${i+1}`}
       value={playerNames[i]||""}
       onChange={(e)=>{ setError(null); updatePlayerName(i,e.target.value) }}
       />
+      </div>
       ))}
       
       <h3>Ristoranti</h3>
       
       {Array.from({length:restaurants}).map((_,i)=>(
-      
+      <div key={i} className="setupRow">
+      <div className="avatarPicker">
+      {RESTAURANT_AVATARS.map((emoji,idx)=>(
+      <button
+      key={idx}
+      type="button"
+      className={`avatarOption ${(restaurantAvatars[i] ?? 0)===idx ? "selected" : ""}`}
+      onClick={()=>updateRestaurantAvatar(i,idx)}
+      title={`Icona ${idx+1}`}
+      >
+      {emoji}
+      </button>
+      ))}
+      </div>
       <input
-      key={i}
       type="text"
       placeholder={`Nome ristorante ${i+1}`}
       value={restaurantNames[i]||""}
       onChange={(e)=>{ setError(null); updateRestaurantName(i,e.target.value) }}
       />
+      </div>
       ))}
       
       {!isSetupValid() && <p className="hintMsg">Compila tutti i nomi per continuare.</p>}
@@ -473,7 +528,10 @@ return(
 
 <>
 <p className="voteProgress">Ristorante {currentRestaurant + 1} di {restaurantNames.length}</p>
-<h2>{restaurantNames[currentRestaurant]}</h2>
+<h2 className="voteRestaurantTitle">
+<span className="restaurantIcon">{RESTAURANT_AVATARS[restaurantAvatars[currentRestaurant] ?? 0]}</span>
+{restaurantNames[currentRestaurant]}
+</h2>
 
 {voteCategories.map(cat=>(
 
@@ -531,19 +589,19 @@ Apri la busta
 
 <>
 
-{data.map((r,i)=>(
-
+{data.map((r,i)=>{
+const origIndex = restaurantNames.indexOf(r.name)
+const icon = RESTAURANT_AVATARS[restaurantAvatars[origIndex] ?? 0]
+return (
 <div key={i} className="resultBlock">
-
 <h3>
+<span className="resultIcon">{icon}</span>
 #{i+1} {r.name}
 </h3>
-
 <p>{r.total} punti</p>
-
 </div>
-
-))}
+)
+})}
 
 <BarChart width={320} height={300} data={data}>
 <XAxis dataKey="name" tick={{ fill: '#c00', fontSize: 12 }} stroke="#c00"/>
