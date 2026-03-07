@@ -173,7 +173,6 @@ return(
 
 <div
   className={`background ${bg}`}
-  style={bg==="bg1" ? { backgroundSize: "auto 75vh", backgroundPosition: "50% 0" } : undefined}
 ></div>
 
 <div className="app">
@@ -182,7 +181,7 @@ return(
 
 {screen==="login" &&(
 
-<div className="homeContent" style={{ marginTop: "78vh" }}>
+<div className="homeContent">
 <h1>Forchette & Polpette</h1>
 {error && <p className="errorMsg">{error}</p>}
 <button onClick={login} disabled={loading==="login"}>
@@ -194,7 +193,7 @@ return(
 
 {screen==="home" &&(
 
-<div className="homeContent" style={{ marginTop: "78vh" }}>
+<div className="homeContent">
       {error && <p className="errorMsg">{error}</p>}
       <h2>Benvenuto {user?.displayName}</h2>
       
