@@ -25,11 +25,11 @@
   transition:background-image 0.8s ease-in-out;
   }
   
-  /* Logo in fascia alta, più grande (non rimpicciolito), ancorato in alto */
+  /* Logo in fascia alta, grande e ben visibile */
   .bg1{
   background-image:url("/backgrounds/bg-1.png");
   background-position:50% 0;
-  background-size:auto 44vh;
+  background-size:auto 58vh;
   }
   
   .bg2{
@@ -67,7 +67,7 @@
   
   /* Contenuto sotto la fascia logo (login, home) */
   .homeContent{
-  margin-top:46vh;
+  margin-top:60vh;
   }
   
   /* Bottone Indietro sempre in basso e centrato */
