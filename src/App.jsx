@@ -52,7 +52,10 @@ setScreen("home")
 
 function goBack(){
 setError(null)
-if(screen==="home"){ signOut(auth).then(()=>{ setScreen("login") }) }
+if(screen==="home"){
+if(mode!==null) setMode(null)
+else signOut(auth).then(()=>{ setScreen("login") })
+}
 else if(screen==="setup"){ setScreen("home") }
 else if(screen==="vote"){ setScreen("setup") }
 else if(screen==="result"){ setScreen("home"); setReveal(false) }
