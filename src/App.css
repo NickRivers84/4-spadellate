@@ -71,6 +71,11 @@
   
   }
   
+  /* Schermata home: abbassiamo titoli e bottoni per non sovrapporre il logo */
+  .homeContent{
+  margin-top:min(160px, 28vw);
+  }
+  
   /* TITOLI */
   
   h1{
@@ -136,13 +141,13 @@
   
   }
   
-  /* BOTTONI */
+  /* BOTTONI: testo bianco su sfondo arancione per leggibilità */
   
   button{
   
   background:#ff5a2c;
   
-  color:red !important;
+  color:#fff !important;
   text-shadow:
   -0.5px -0.5px 0 #000,
   0.5px -0.5px 0 #000,
@@ -220,10 +225,11 @@
   
   }
   
+  /* Bottone selezionato (es. modalità): sfondo bianco, testo rosso per contrasto */
   .selected{
   
-  background:white !important;
-  color:red !important;
+  background:#fff !important;
+  color:#c00 !important;
   text-shadow:
   -0.5px -0.5px 0 #000,
   0.5px -0.5px 0 #000,

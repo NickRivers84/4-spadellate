@@ -172,7 +172,7 @@ Login con Google
 
 {screen==="home" &&(
 
-<>
+<div className="homeContent">
 
       <h2>Benvenuto {user?.displayName}</h2>
       
@@ -277,7 +277,7 @@ Login con Google
       </>
       )}
 
-</>
+</div>
 
       )}
       
