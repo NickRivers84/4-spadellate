@@ -1,13 +1,22 @@
-*{
+:root{
+  --primary:#c00;
+  --accent:#ff5a2c;
+  --bg-page:#f6efe6;
+  --card-bg:rgba(255,255,255,0.9);
+  --shadow:0 4px 14px rgba(0,0,0,0.12);
+  --shadow-hover:0 6px 20px rgba(0,0,0,0.18);
+  }
+  
+  *{
   margin:0;
   padding:0;
   box-sizing:border-box;
   }
   
   body{
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  font-family:"Nunito",-apple-system,BlinkMacSystemFont,sans-serif;
   overflow-x:hidden;
-  background-color:#f6efe6;
+  background-color:var(--bg-page);
   }
   
   /* BACKGROUND */
@@ -78,6 +87,22 @@
   /* Contenuto sotto il logo (login/home con sfondo fisso) */
   .homeContent{
   margin-top:52vh;
+  }
+  .welcomeRow{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  margin-bottom:16px;
+  flex-wrap:wrap;
+  }
+  .avatar{
+  width:48px;
+  height:48px;
+  border-radius:50%;
+  border:2px solid #fff;
+  box-shadow:var(--shadow);
+  object-fit:cover;
   }
   
   .topBarHome{
@@ -232,11 +257,11 @@
   
   }
   
-  /* BOTTONI: testo bianco, contorno bianco su tutti */
+  /* BOTTONI: ombra, transizione, feedback al click */
   
   button{
   
-  background:#ff5a2c;
+  background:var(--accent);
   
   color:#fff !important;
   text-shadow:
@@ -257,17 +282,24 @@
   
   cursor:pointer;
   
-  transition:transform 0.1s ease;
+  box-shadow:var(--shadow);
+  
+  transition:transform 0.2s ease, box-shadow 0.2s ease;
   
   }
   
   button:hover{
   transform:scale(1.05);
+  box-shadow:var(--shadow-hover);
   }
   
-  /* Bottone modalità selezionata: stesso arancione degli altri, bordo bianco per evidenziare */
+  button:active{
+  transform:scale(0.98);
+  }
+  
+  /* Bottone modalità selezionata */
   button.selected{
-  background:#ff5a2c !important;
+  background:var(--accent) !important;
   color:#fff !important;
   border:2px solid #fff;
   }
@@ -294,6 +326,13 @@
   }
   
   /* VOTI */
+  
+  /* Indicatore "Ristorante X di Y" */
+  .voteProgress{
+  font-size:14px;
+  margin-bottom:8px;
+  opacity:0.95;
+  }
   
   .voteRow{
   

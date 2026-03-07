@@ -271,7 +271,10 @@ return(
 
 <div className="homeContent">
       {error && <p className="errorMsg">{error}</p>}
+      <div className="welcomeRow">
+      {user?.photoURL && <img src={user.photoURL} alt="" className="avatar" />}
       <h2>Benvenuto {user?.displayName}</h2>
+      </div>
       <h3>Modalità gioco</h3>
       
       {mode===null && (
@@ -469,6 +472,7 @@ return(
       {screen==="vote" &&(
 
 <>
+<p className="voteProgress">Ristorante {currentRestaurant + 1} di {restaurantNames.length}</p>
 <h2>{restaurantNames[currentRestaurant]}</h2>
 
 {voteCategories.map(cat=>(
