@@ -12,7 +12,7 @@ const [screen,setScreen] = useState("login")
 const [bg,setBg] = useState("bg1")
 const [gameId,setGameId] = useState(null)
 
-const [mode,setMode] = useState("classic")
+const [mode,setMode] = useState(null)
 const [players,setPlayers] = useState(4)
 const [restaurants,setRestaurants] = useState(4)
 
@@ -174,63 +174,108 @@ Login con Google
 
 <>
 
-<h2>Benvenuto {user?.displayName}</h2>
-
-<h3>Modalità gioco</h3>
-
-<div className="modeButtons">
-
-<button
-className={mode==="classic"?"selected":""}
-onClick={()=>{
-setMode("classic")
-setPlayers(4)
-setRestaurants(4)
-}}
->
-Classica
-</button>
-
-<button
-className={mode==="custom"?"selected":""}
-onClick={()=>setMode("custom")}
->
-Personalizzata
-</button>
-
-</div>
-
-      {mode==="custom" &&(
-
-<>
-
+      <h2>Benvenuto {user?.displayName}</h2>
+      
+      <h3>Modalità gioco</h3>
+      
+      {/* Scelta iniziale delle modalità: mostra tutti i bottoni finché non è stata scelta una modalità */}
+      {mode===null && (
+      <div className="modeButtons">
+      
+      <button
+      onClick={()=>{
+      setMode("classic")
+      setPlayers(4)
+      setRestaurants(4)
+      }}
+      >
+      Classica
+      </button>
+      
+      <button
+      onClick={()=>{
+      setMode("custom")
+      setPlayers(4)
+      setRestaurants(4)
+      }}
+      >
+      Personalizzata
+      </button>
+      
+      <button
+      onClick={()=>{
+      setMode("oneshot")
+      setPlayers(2)
+      setRestaurants(1)
+      }}
+      >
+      One shot
+      </button>
+      
+      </div>
+      )}
+      
+      {/* Dettaglio modalità CLASSICA: 4 giocatori, 4 ristoranti non modificabili */}
+      {mode==="classic" && (
+      <>
+      <button className="selected">Classica</button>
+      <p>4 giocatori e 4 ristoranti</p>
+      <button onClick={createGame}>
+      Avvia partita
+      </button>
+      </>
+      )}
+      
+      {/* Dettaglio modalità PERSONALIZZATA: slider giocatori e ristoranti da 2 a 8 */}
+      {mode==="custom" && (
+      <>
+      <button className="selected">Personalizzata</button>
+      
       <h3 className="customLabel">Numero giocatori: {players}</h3>
-
-<input
-type="range"
-min="2"
-max="8"
-value={players}
-onChange={(e)=>setPlayers(parseInt(e.target.value))}
-/>
-
+      <input
+      type="range"
+      min="2"
+      max="8"
+      value={players}
+      onChange={(e)=>setPlayers(parseInt(e.target.value))}
+      />
+      
       <h3 className="customLabel">Numero ristoranti: {restaurants}</h3>
-
-<input
-type="range"
-min="2"
-max="8"
-value={restaurants}
-onChange={(e)=>setRestaurants(parseInt(e.target.value))}
-/>
-
-</>
-
-)}
-
-<button onClick={createGame}>
-                One shot
-                </button>
+      <input
+      type="range"
+      min="2"
+      max="8"
+      value={restaurants}
+      onChange={(e)=>setRestaurants(parseInt(e.target.value))}
+      />
+      
+      <button onClick={createGame}>
+      Avvia partita
+      </button>
+      </>
+      )}
+      
+      {/* Dettaglio modalità ONE SHOT: 1 ristorante, slider solo per numero giocatori */}
+      {mode==="oneshot" && (
+      <>
+      <button className="selected">One shot</button>
+      
+      <h3 className="customLabel">Numero giocatori: {players}</h3>
+      <input
+      type="range"
+      min="2"
+      max="8"
+      value={players}
+      onChange={(e)=>setPlayers(parseInt(e.target.value))}
+      />
+      
+      <p>Ristoranti: 1 (One shot)</p>
+      
+      <button onClick={createGame}>
+      Avvia partita
+      </button>
+      </>
+      )}
 
 </>
 
