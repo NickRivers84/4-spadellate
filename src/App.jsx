@@ -56,9 +56,9 @@ if(screen==="home"){
 if(mode!==null) setMode(null)
 else signOut(auth).then(()=>{ setScreen("login") })
 }
-else if(screen==="setup"){ setScreen("home") }
+else if(screen==="setup"){ setBg("bg1"); setScreen("home") }
 else if(screen==="vote"){ setScreen("setup") }
-else if(screen==="result"){ setScreen("home"); setReveal(false) }
+else if(screen==="result"){ setBg("bg1"); setScreen("home"); setReveal(false) }
 }
 
 async function login(){

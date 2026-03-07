@@ -25,15 +25,9 @@
   transition:background-image 0.8s ease-in-out;
   }
   
-  /* Login/Home: sfondo ingrandito (50vh), logo e motivo più visibili */
-  .background.bg1{
-  position:relative;
-  z-index:0;
-  height:50vh;
-  min-height:220px;
-  background-image:url("/backgrounds/bg-1.png?v=3");
-  background-size:contain;
-  background-position:top center;
+  /* Login/Home: stesso sfondo full-screen di setup/vote (fix al refresh) */
+  .bg1{
+  background-image:url("/backgrounds/bg-1.png?v=4");
   }
   
   .bg2{
@@ -69,9 +63,9 @@
   width:100%;
   }
   
-  /* Contenuto sotto il logo (logo è già sopra in flusso, piccolo spazio) */
+  /* Contenuto sotto il logo (login/home con sfondo fisso) */
   .homeContent{
-  margin-top:1rem;
+  margin-top:52vh;
   }
   
   /* Bottone Indietro sempre in basso e centrato */
