@@ -253,6 +253,8 @@ return(
 
 <div className="appContent">
 
+<div key={screen} className="screenTransition">
+
 {screen==="login" &&(
 
 <div className="homeContent">
@@ -553,6 +555,8 @@ Apri la busta
 </>
 
 )}
+
+</div>
 
 </div>
 
