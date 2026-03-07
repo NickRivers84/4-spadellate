@@ -1,28 +1,24 @@
-import { useState } from "react";
+import { useState, useEffect } from "react"
+import { db, auth, googleProvider } from "./firebase"
+import { signInWithPopup, onAuthStateChanged } from "firebase/auth"
+import { collection, addDoc, doc, setDoc } from "firebase/firestore"
+import { BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts"
 
 export default function App(){
 
-const [screen,setScreen] = useState("home")
-const [mode,setMode] = useState(null)
+const [user,setUser] = useState(null)
+const [screen,setScreen] = useState("login")
+const [bg,setBg] = useState("bg1")
+const [gameId,setGameId] = useState(null)
 
-const [players,setPlayers] = useState(4)
-const [restaurants,setRestaurants] = useState(4)
+const players = 4
+const restaurants = 4
 
 const [playerNames,setPlayerNames] = useState([])
 const [restaurantNames,setRestaurantNames] = useState([])
-
-const [currentPlayer,setCurrentPlayer] = useState(0)
+const [votes,setVotes] = useState([])
 const [currentRestaurant,setCurrentRestaurant] = useState(0)
-
-const [allVotes,setAllVotes] = useState([])
-
-const [votes,setVotes] = useState({
-location:null,
-menu:null,
-service:null,
-price:null,
-bonus:null
-})
+const [reveal,setReveal] = useState(false)
 
 const voteCategories=[
 {key:"location",label:"Location"},
@@ -32,185 +28,205 @@ const voteCategories=[
 {key:"bonus",label:"Bonus"}
 ]
 
-function startClassic(){
-setMode("classic")
-setPlayers(4)
-setRestaurants(4)
-setScreen("setup")
-}
-
-function startOneShot(){
-setMode("oneshot")
-setRestaurants(1)
-setScreen("setup")
-}
-
-function startCustom(){
-setMode("custom")
-setScreen("setup")
-}
-
-function startGame(){
-
-let p=[]
-let r=[]
-
-for(let i=0;i<players;i++){
-p.push(playerNames[i] || `Giocatore ${i+1}`)
-}
-
-for(let i=0;i<restaurants;i++){
-r.push(restaurantNames[i] || `Ristorante ${i+1}`)
-}
-
-setPlayerNames(p)
-setRestaurantNames(r)
-
-setCurrentPlayer(0)
-setCurrentRestaurant(0)
-
-setScreen("vote")
-}
-
-function selectVote(category,value){
-
-setVotes({
-...votes,
-[category]:value
-})
-
-}
-
-function confirmVote(){
-
-const voteData={
-player:playerNames[currentPlayer],
-restaurant:restaurantNames[currentRestaurant],
-scores:votes
-}
-
-setAllVotes([...allVotes,voteData])
-
-setVotes({
+const emptyVotes={
 location:null,
 menu:null,
 service:null,
 price:null,
 bonus:null
+}
+
+useEffect(()=>{
+onAuthStateChanged(auth,(u)=>{
+if(u){
+setUser(u)
+setScreen("home")
+}
+})
+},[])
+
+async function login(){
+await signInWithPopup(auth,googleProvider)
+}
+
+async function createGame(){
+
+setBg("bg2")
+
+const docRef = await addDoc(collection(db,"games"),{
+owner:user.uid
 })
 
-let nextRestaurant=currentRestaurant+1
-let nextPlayer=currentPlayer
+setGameId(docRef.id)
+setScreen("setup")
 
-if(nextRestaurant>=restaurants){
-nextRestaurant=0
-nextPlayer++
 }
 
-if(nextPlayer>=players){
+function updatePlayerName(i,val){
+
+const arr=[...playerNames]
+arr[i]=val
+setPlayerNames(arr)
+
+}
+
+function updateRestaurantName(i,val){
+
+const arr=[...restaurantNames]
+arr[i]=val
+setRestaurantNames(arr)
+
+}
+
+async function startGame(){
+
+const votesInit=[]
+
+for(let i=0;i<restaurants;i++){
+votesInit.push({...emptyVotes})
+}
+
+setVotes(votesInit)
+
+await setDoc(doc(db,"games",gameId),{
+playerNames,
+restaurantNames,
+votes:votesInit
+},{merge:true})
+
+setScreen("vote")
+
+}
+
+function selectVote(category,value){
+
+const updated=[...votes]
+
+updated[currentRestaurant]={
+...updated[currentRestaurant],
+[category]:value
+}
+
+setVotes(updated)
+
+}
+
+function nextRestaurant(){
+
+if(currentRestaurant < restaurants-1){
+
+setCurrentRestaurant(currentRestaurant+1)
+
+}else{
+
+setBg("bg3")
 setScreen("result")
-return
-}
-
-setCurrentRestaurant(nextRestaurant)
-setCurrentPlayer(nextPlayer)
 
 }
 
-if(screen==="home"){
+}
+
+function ranking(){
+
+return restaurantNames.map((name,i)=>{
+
+const total = Object.values(votes[i]||{})
+.reduce((a,b)=>a+(b||0),0)
+
+return {name,total}
+
+})
+.sort((a,b)=>b.total-a.total)
+
+}
+
+const data = ranking()
+
 return(
 
-<div className="screen bg1">
+<>
 
-<button onClick={startClassic}>Modalità Classica</button>
+<div className={`background ${bg}`}></div>
 
-<button onClick={startOneShot}>One Shot</button>
+<div className="app">
 
-<button onClick={startCustom}>Partita Personalizzata</button>
+{screen==="login" &&(
 
-</div>
+<>
 
-)
-}
+<h1>Forchette & Polpette</h1>
 
-if(screen==="setup"){
-return(
+<button onClick={login}>
+Login con Google
+</button>
 
-<div className="screen bg2">
+</>
 
-<h2>Impostazioni</h2>
-
-<p>Giocatori: {players}</p>
-
-<input
-type="range"
-min="2"
-max="8"
-value={players}
-onChange={(e)=>setPlayers(Number(e.target.value))}
-/>
-
-<p>Ristoranti: {restaurants}</p>
-
-{mode!=="oneshot" && (
-<input
-type="range"
-min="2"
-max="8"
-value={restaurants}
-onChange={(e)=>setRestaurants(Number(e.target.value))}
-/>
 )}
 
-<h3>Nomi Giocatori</h3>
+{screen==="home" &&(
+
+<>
+
+<h2>Benvenuto {user?.displayName}</h2>
+
+<button onClick={createGame}>
+Crea partita
+</button>
+
+</>
+
+)}
+
+{screen==="setup" &&(
+
+<>
+
+<h2>Setup partita</h2>
+
+<p>Giocatori: 4</p>
+<p>Ristoranti: 4</p>
+
+<h3>Nomi giocatori</h3>
 
 {Array.from({length:players}).map((_,i)=>(
+
 <input
 key={i}
 placeholder={`Giocatore ${i+1}`}
-value={playerNames[i] || ""}
-onChange={(e)=>{
-let arr=[...playerNames]
-arr[i]=e.target.value
-setPlayerNames(arr)
-}}
+onChange={(e)=>updatePlayerName(i,e.target.value)}
 />
+
 ))}
 
-<h3>Nomi Ristoranti</h3>
+<h3>Nomi ristoranti</h3>
 
 {Array.from({length:restaurants}).map((_,i)=>(
+
 <input
 key={i}
 placeholder={`Ristorante ${i+1}`}
-value={restaurantNames[i] || ""}
-onChange={(e)=>{
-let arr=[...restaurantNames]
-arr[i]=e.target.value
-setRestaurantNames(arr)
-}}
+onChange={(e)=>updateRestaurantName(i,e.target.value)}
 />
+
 ))}
 
-<button onClick={startGame}>Inizia</button>
+<button onClick={startGame}>
+Inizia partita
+</button>
 
-</div>
+</>
 
-)
-}
+)}
 
-if(screen==="vote"){
-return(
+{screen==="vote" &&(
 
-<div className="screen bg2">
+<>
 
-<h2>Votazione</h2>
-
-<p>
-{playerNames[currentPlayer]} → {restaurantNames[currentRestaurant]}
-</p>
+<h2>{restaurantNames[currentRestaurant]}</h2>
 
 {voteCategories.map(cat=>(
+
 <div key={cat.key} className="voteRow">
 
 <p>{cat.label}</p>
@@ -218,61 +234,92 @@ return(
 <div className="voteButtons">
 
 {[1,2,3,4,5].map(n=>(
+
 <button
 key={n}
-className={votes[cat.key]===n ? "selected":""}
+className={
+votes[currentRestaurant]?.[cat.key]===n
+?"selected":""
+}
 onClick={()=>selectVote(cat.key,n)}
 >
+
 {n}
+
 </button>
+
 ))}
 
 </div>
 
 </div>
+
 ))}
 
-<button onClick={confirmVote}>
-Conferma voto
+<button onClick={nextRestaurant}>
+Prossimo ristorante
 </button>
 
+</>
+
+)}
+
+{screen==="result" &&(
+
+<>
+
+<h2>Classifica</h2>
+
+{!reveal &&(
+
+<button onClick={()=>setReveal(true)}>
+Apri la busta
+</button>
+
+)}
+
+{reveal &&(
+
+<>
+
+{data.map((r,i)=>(
+
+<div key={i} className="resultBlock">
+
+<h3>
+#{i+1} {r.name}
+</h3>
+
+<p>{r.total} punti</p>
+
 </div>
+
+))}
+
+<BarChart width={320} height={300} data={data}>
+
+<XAxis dataKey="name"/>
+
+<YAxis/>
+
+<Tooltip/>
+
+<Bar dataKey="total"/>
+
+</BarChart>
+
+</>
+
+)}
+
+</>
+
+)}
+
+</div>
+
+</>
 
 )
-}
-
-if(screen==="result"){
-return(
-
-<div className="screen bg3">
-
-<h2>Risultati</h2>
-
-{allVotes.map((v,i)=>(
-<div key={i}>
-
-<p>
-<b>{v.player}</b> → {v.restaurant}
-</p>
-
-<p>
-Location:{v.scores.location} |
-Menu:{v.scores.menu} |
-Servizio:{v.scores.service} |
-Conto:{v.scores.price} |
-Bonus:{v.scores.bonus}
-</p>
-
-</div>
-))}
-
-<button onClick={()=>window.location.reload()}>
-Nuova partita
-</button>
-
-</div>
-
-)
-}
 
 }

@@ -1,177 +1,161 @@
-:root{
-  --ink:#111;
-  --ink-soft:rgba(0,0,0,.70);
-
-  --card:rgba(255,255,255,.40);          /* meno opaco (più trasparente) */
-  --card-border:rgba(0,0,0,.14);
-  --shadow:0 18px 50px rgba(0,0,0,.16);
-
-  --btn-bg:rgba(255,255,255,.18);
-  --btn-border:#111;
-
-  --radius:22px;
-  --maxw:560px;
-}
-
-*{box-sizing:border-box}
-html,body,#root{width:100%;height:100%;margin:0}
-body{
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
-  color:var(--ink);
-  background:#f6f6f6;
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+  }
+  
+  body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto;
   overflow-x:hidden;
-}
-
-/* App full screen + sfondo chiaro */
-.app{
+  }
+  
+  /* BACKGROUND */
+  
+  .background{
+  
+  position:fixed;
+  
+  top:0;
+  left:0;
+  
   width:100vw;
-  min-height:100vh;
-  position:relative;
-  background-color:#f6f6f6;
-
-  /* se hai sfondi custom in public/backgrounds, usiamo il primo */
-  background-image: url("/backgrounds/bg-1.png");
-  background-size: cover;
-  background-position: center top;
-  background-repeat:no-repeat;
-}
-
-/* patina leggera */
-.app::before{
-  content:"";
-  position:fixed;
-  inset:0;
-  background:rgba(255,255,255,.22);
-  pointer-events:none;
-  z-index:0;
-}
-.app > *{position:relative;z-index:1}
-
-/* Screen base */
-.screen{
-  width:100%;
-  min-height:100vh;
-  padding:28px 16px;
+  height:100dvh;
+  
+  background-size:cover;
+  background-position:center;
+  
+  z-index:-1;
+  
+  }
+  
+  /* IMMAGINI */
+  
+  .bg1{
+  background-image:url("/bg1.jpg");
+  }
+  
+  .bg2{
+  background-image:url("/bg2.jpg");
+  }
+  
+  .bg3{
+  background-image:url("/bg3.jpg");
+  }
+  
+  /* APP */
+  
+  .app{
+  
+  min-height:100dvh;
+  
   display:flex;
-  justify-content:center;
-  align-items:flex-start;
-}
-
-/* HOME: centrata a metà schermo */
-.screen.home{
-  align-items:center !important;
-  text-align:center;
-}
-
-/* Card */
-.card{
-  width:100%;
-  max-width:var(--maxw);
-  margin:0 auto;
-  padding:18px 18px;
-  border-radius:var(--radius);
-  border:1px solid var(--card-border);
-  background:var(--card);
-  box-shadow:var(--shadow);
-  backdrop-filter:blur(10px);
-  -webkit-backdrop-filter:blur(10px);
-}
-.home-card, .home-card *{ color:var(--ink) !important; }
-.home-card .muted{ color:var(--ink-soft) !important; }
-
-/* Panel/stack: centra sempre */
-.panel{ width:100%; max-width:var(--maxw); margin:0 auto; }
-.centerStack{
-  display:flex;
+  
   flex-direction:column;
+  
   align-items:center;
-  justify-content:center;
-  gap:10px;
-}
-
-/* Titoli */
-.h2{ margin:0 0 8px; font-size:1.25rem; }
-p{ margin:0 0 12px; line-height:1.35; }
-.muted{ color:var(--ink-soft); }
-
-/* Logo */
-.logo{
-  width:min(520px,92vw);
-  height:auto;
-  display:block;
-  margin:6px auto 10px;
-}
-
-/* Bottoni */
-button{
-  font:inherit;
+  
+  padding:40px 20px;
+  
+  color:white;
+  
+  }
+  
+  /* TITOLI */
+  
+  h1{
+  font-size:34px;
+  margin-bottom:30px;
+  }
+  
+  h2{
+  margin-bottom:20px;
+  }
+  
+  /* INPUT */
+  
+  input{
+  
+  width:250px;
+  
+  padding:12px;
+  
+  margin:6px;
+  
+  border-radius:10px;
+  
+  border:none;
+  
+  }
+  
+  /* BOTTONI */
+  
+  button{
+  
+  background:#ff5a2c;
+  
+  color:white;
+  
+  border:none;
+  
+  padding:14px 20px;
+  
+  border-radius:12px;
+  
+  margin:10px;
+  
+  font-weight:bold;
+  
   cursor:pointer;
-  border-radius:999px;
-  padding:12px 16px;
-  min-height:44px;
-}
-
-.btn{ border:2px solid var(--btn-border); background:var(--btn-bg); color:var(--ink); }
-.btn.big{ width:100%; max-width:360px; margin:10px auto 0; }
-.btn:disabled{ opacity:.55; cursor:not-allowed; }
-
-.btn:hover{ transform: translateY(-1px); background:rgba(255,255,255,.28); }
-.btn:active{ transform: translateY(0); }
-
-.btn.btn-secondary{
-  border:1px solid rgba(0,0,0,.18);
-  background:rgba(255,255,255,.22);
-}
-
-/* Setup/Vote layout “pulito” */
-.screen.setup, .screen.vote, .screen.ranking{
-  align-items:flex-start;
-}
-
-/* Toast (se lo usi) */
-.toast{
-  position:fixed;
-  top:14px;
-  left:50%;
-  transform:translateX(-50%);
-  background:rgba(0,0,0,.82);
-  color:#fff;
-  padding:10px 14px;
-  border-radius:999px;
-  z-index:9999;
-}
-/* Testi schermate interne */
-
-.vote-screen h2,
-.vote-screen h3,
-.vote-screen p,
-.vote-screen label {
-  color: #b30000;
-  font-weight: 600;
-}
-
-/* nomi categorie voto */
-.vote-category {
-  color: #b30000;
-  font-weight: bold;
-}
-
-/* testo risultati */
-.result-screen {
-  color: #b30000;
-}
-
-/* titoli schermate */
-.screen-title {
-  color: #b30000;
-}
-.background-overlay {
-  position: fixed;
-  inset: 0;
-  backdrop-filter: blur(6px);
-  background: rgba(255,255,255,0.25);
-  z-index: -1;
-}
-h1, h2, h3, p, label, span, div {
-  color: #b30000;
-}
+  
+  }
+  
+  /* VOTI */
+  
+  .voteRow{
+  margin:18px 0;
+  text-align:center;
+  }
+  
+  .voteButtons{
+  display:flex;
+  gap:8px;
+  justify-content:center;
+  }
+  
+  .voteButtons button{
+  
+  width:40px;
+  height:40px;
+  
+  border-radius:50%;
+  
+  background:white;
+  color:black;
+  
+  }
+  
+  .selected{
+  background:red !important;
+  color:white !important;
+  }
+  
+  /* RISULTATI */
+  
+  .resultBlock{
+  
+  background:white;
+  
+  color:black;
+  
+  padding:16px;
+  
+  border-radius:12px;
+  
+  margin:10px;
+  
+  width:260px;
+  
+  text-align:center;
+  
+  }
+  

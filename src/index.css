@@ -1,71 +1,154 @@
-body{
+*{
   margin:0;
-  font-family:system-ui;
-  color:white;
+  padding:0;
+  box-sizing:border-box;
   }
   
-  .screen{
-  min-height:100vh;
-  display:flex;
-  flex-direction:column;
-  align-items:center;
-  justify-content:center;
-  gap:20px;
-  text-align:center;
-  padding:20px;
+  html, body, #root{
+  height:100%;
   }
+  
+  body{
+  
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto;
+  
+  overflow-x:hidden;
+  
+  }
+  
+  /* BACKGROUND FISSO */
+  
+  .background{
+  
+  position:fixed;
+  
+  top:0;
+  left:0;
+  
+  width:100vw;
+  height:100vh;
+  
+  background-size:cover;
+  background-position:center;
+  
+  z-index:-1;
+  
+  }
+  
+  /* APP */
+  
+  .app{
+  
+  min-height:100vh;
+  
+  display:flex;
+  
+  flex-direction:column;
+  
+  align-items:center;
+  
+  padding:40px 20px;
+  
+  color:white;
+  
+  }
+  
+  /* TITOLI */
+  
+  h1{
+  font-size:34px;
+  margin-bottom:30px;
+  }
+  
+  h2{
+  margin-bottom:20px;
+  }
+  
+  /* INPUT */
+  
+  input{
+  
+  width:250px;
+  
+  padding:12px;
+  
+  margin:6px;
+  
+  border-radius:10px;
+  
+  border:none;
+  
+  }
+  
+  /* BOTTONI */
   
   button{
-  padding:12px 20px;
-  font-size:18px;
+  
+  background:#ff5a2c;
+  
+  color:white;
+  
   border:none;
-  border-radius:10px;
+  
+  padding:14px 20px;
+  
+  border-radius:12px;
+  
+  margin:10px;
+  
+  font-weight:bold;
+  
   cursor:pointer;
+  
   }
   
+  /* VOTI */
+  
   .voteRow{
-  margin-top:20px;
+  margin:18px 0;
+  text-align:center;
   }
   
   .voteButtons{
   display:flex;
-  gap:10px;
+  gap:8px;
   justify-content:center;
-  margin-top:10px;
   }
   
   .voteButtons button{
-  width:45px;
-  height:45px;
+  
+  width:40px;
+  height:40px;
+  
   border-radius:50%;
+  
+  background:white;
+  color:black;
+  
   }
   
   .selected{
-  background:#ff9800;
-  color:white;
+  background:red !important;
+  color:white !important;
   }
   
-  .bg1{
-  background-image:url("/backgrounds/bg-1.png");
-  background-size:cover;
-  background-position:center;
-  background-repeat:no-repeat;
-  }
+  /* RISULTATI */
   
-  .bg2{
-  background-image:url("/backgrounds/bg-2.png");
-  background-size:cover;
-  background-position:center;
-  background-repeat:no-repeat;
-  }
+  .resultBlock{
   
-  .bg3{
-  background-image:url("/backgrounds/bg-3.png");
-  background-size:cover;
-  background-position:center;
-  background-repeat:no-repeat;
-  }
-  h1, h2, h3, p, label, span, div {
-    color: #b30000;
+  background:white;
+  
+  color:black;
+  
+  padding:16px;
+  
+  border-radius:12px;
+  
+  margin:10px;
+  
+  width:260px;
+  
+  text-align:center;
+  
   }
   
