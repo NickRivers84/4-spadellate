@@ -94,6 +94,31 @@
   font-size:14px;
   margin:8px 0;
   }
+  .gameList{
+  width:100%;
+  max-width:320px;
+  margin:16px 0;
+  }
+  .gameItem{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:8px 0;
+  padding:10px 12px;
+  background:rgba(255,255,255,0.25);
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,0.5);
+  }
+  .gameLabel{
+  font-size:14px;
+  flex:1;
+  text-align:left;
+  }
+  .smallButton{
+  padding:6px 14px;
+  font-size:13px;
+  }
   button:disabled{
   opacity:0.8;
   cursor:not-allowed;

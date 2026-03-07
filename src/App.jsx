@@ -2,7 +2,7 @@ import "./App.css"
 import { useState, useEffect } from "react"
 import { db, auth, googleProvider } from "./firebase"
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth"
-import { collection, addDoc, doc, setDoc } from "firebase/firestore"
+import { collection, addDoc, doc, setDoc, getDoc, getDocs, query, where } from "firebase/firestore"
 import { BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts"
 
 export default function App(){
@@ -24,6 +24,8 @@ const [reveal,setReveal] = useState(false)
 
 const [loading,setLoading] = useState(null)
 const [error,setError] = useState(null)
+const [myGames,setMyGames] = useState([])
+const [loadingGameId,setLoadingGameId] = useState(null)
 
 const voteCategories=[
 {key:"location",label:"Location"},
@@ -50,15 +52,58 @@ setScreen("home")
 })
 },[])
 
+async function fetchMyGames(){
+if(!user) return
+try{
+const q = query(collection(db,"games"), where("owner","==",user.uid))
+const snap = await getDocs(q)
+const list = snap.docs.map(d=>({ id: d.id, ...d.data() }))
+list.sort((a,b)=>(b.createdAt||0)-(a.createdAt||0))
+setMyGames(list.slice(0,15))
+}catch(_){
+setMyGames([])
+}
+}
+
+useEffect(()=>{ fetchMyGames() },[user])
+
+async function loadGame(id){
+setError(null)
+setLoadingGameId(id)
+try{
+const snap = await getDoc(doc(db,"games",id))
+if(!snap.exists() || snap.data().owner!==user.uid){ setError("Partita non trovata."); return }
+const d = snap.data()
+setGameId(id)
+setPlayers(d.players||4)
+setRestaurants(d.restaurants||4)
+setMode(d.mode||"classic")
+setPlayerNames(d.playerNames||[])
+setRestaurantNames(d.restaurantNames||[])
+setVotes(d.votes||[])
+setCurrentRestaurant(d.currentRestaurant!= null ? Math.min(d.currentRestaurant, (d.restaurants||4)-1) : 0)
+setReveal(false)
+const status = d.status||"setup"
+if(status==="result"){ setBg("bg3"); setReveal(true) }
+else if(status==="vote") setBg("bg2")
+else setBg("bg2")
+setScreen(status)
+}catch(e){
+setError(e?.message||"Errore caricamento partita.")
+}finally{
+setLoadingGameId(null)
+}
+}
+
 function goBack(){
 setError(null)
 if(screen==="home"){
 if(mode!==null) setMode(null)
 else signOut(auth).then(()=>{ setScreen("login") })
 }
-else if(screen==="setup"){ setBg("bg1"); setScreen("home") }
+else if(screen==="setup"){ setBg("bg1"); setScreen("home"); fetchMyGames() }
 else if(screen==="vote"){ setScreen("setup") }
-else if(screen==="result"){ setBg("bg1"); setScreen("home"); setReveal(false) }
+else if(screen==="result"){ setBg("bg1"); setScreen("home"); setReveal(false); fetchMyGames() }
 }
 
 async function login(){
@@ -82,7 +127,9 @@ const docRef = await addDoc(collection(db,"games"),{
 owner:user.uid,
 players,
 restaurants,
-mode
+mode,
+status:"setup",
+createdAt:Date.now()
 })
 setGameId(docRef.id)
 setScreen("setup")
@@ -129,7 +176,8 @@ try{
 await setDoc(doc(db,"games",gameId),{
 playerNames,
 restaurantNames,
-votes:votesInit
+votes:votesInit,
+status:"vote"
 },{merge:true})
 setScreen("vote")
 }catch(e){
@@ -153,12 +201,14 @@ setVotes(updated)
 }
 
 async function nextRestaurant(){
+const next = currentRestaurant + 1
 try{
-await setDoc(doc(db,"games",gameId),{ votes },{merge:true})
+await setDoc(doc(db,"games",gameId),{ votes, currentRestaurant: next },{merge:true})
 }catch(_){}
 if(currentRestaurant < restaurants-1){
-setCurrentRestaurant(currentRestaurant+1)
+setCurrentRestaurant(next)
 }else{
+try{ await setDoc(doc(db,"games",gameId),{ status:"result" },{merge:true}) }catch(_){}
 setBg("bg3")
 setScreen("result")
 }
@@ -210,9 +260,24 @@ return(
       {error && <p className="errorMsg">{error}</p>}
       <h2>Benvenuto {user?.displayName}</h2>
       
+      {myGames.length>0 && mode===null && (
+      <>
+      <h3>Le tue partite</h3>
+      <div className="gameList">
+      {myGames.map((g)=>(
+      <div key={g.id} className="gameItem">
+      <span className="gameLabel">{g.mode==="classic"?"Classica":g.mode==="custom"?"Personalizzata":"One shot"} – {g.restaurants} ristoranti</span>
+      <button type="button" className="smallButton" onClick={()=>loadGame(g.id)} disabled={loadingGameId!=null}>
+      {loadingGameId===g.id ? "Caricamento…" : "Riprendi"}
+      </button>
+      </div>
+      ))}
+      </div>
+      </>
+      )}
+      
       <h3>Modalità gioco</h3>
       
-      {/* Scelta iniziale delle modalità: mostra tutti i bottoni finché non è stata scelta una modalità */}
       {mode===null && (
       <div className="modeButtons">
       
