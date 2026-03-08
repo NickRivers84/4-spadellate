@@ -1,13 +1,11 @@
 Suoni dell'app – cosa mettere qui
 =================================
 
-L'app cerca questi file (formato MP3 o OGG):
+L'app cerca questi file in formato WAV:
 
-  click.mp3   – tap / selezione (voto 1-5, scelta icona, bottoni principali)
-  next.mp3    – "Prossimo ristorante"
-  reveal.mp3   – "Apri la busta" (classifica)
-
-Puoi usare file .ogg al posto di .mp3: nel codice va indicato l’estensione.
+  click.wav   – tap / selezione (voto 1-5, scelta icona, bottoni principali)
+  next.wav    – "Prossimo ristorante"
+  reveal.wav  – "Apri la busta" (classifica)
 
 Consiglio: suoni brevi (circa 0,2–0,5 secondi), volume non troppo alto.
 Se un file non c’è, l’app non va in errore: quel suono viene semplicemente saltato.
