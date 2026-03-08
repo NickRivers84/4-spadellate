@@ -25,12 +25,13 @@ const [currentRestaurant,setCurrentRestaurant] = useState(0)
 const [reveal,setReveal] = useState(false)
 
 const [loading,setLoading] = useState(null)
-const [error,setError] = useState(null)
+const [toast,setToast] = useState(null)
 const [myGames,setMyGames] = useState([])
 const [loadingGameId,setLoadingGameId] = useState(null)
 const [openPicker,setOpenPicker] = useState(null)
 const [soundEnabled,setSoundEnabled] = useState(true)
 const [bonusEnabled,setBonusEnabled] = useState(true)
+const [savingNext,setSavingNext] = useState(false)
 
 const voteCategories=[
 {key:"location",label:"Posizione"},
@@ -87,13 +88,22 @@ setMyGames([])
 
 useEffect(()=>{ fetchMyGames() },[user])
 useEffect(()=>{ if(screen!=="setup") setOpenPicker(null) },[screen])
+useEffect(()=>{
+if(!toast) return
+const t = setTimeout(()=>setToast(null),4000)
+return ()=>clearTimeout(t)
+},[toast])
+
+function showToast(message,type="error"){
+setToast({ message, type })
+}
 
 async function loadGame(id){
-setError(null)
+setToast(null)
 setLoadingGameId(id)
 try{
 const snap = await getDoc(doc(db,"games",id))
-if(!snap.exists() || snap.data().owner!==user.uid){ setError("Partita non trovata."); return }
+if(!snap.exists() || snap.data().owner!==user.uid){ showToast("Partita non trovata."); return }
 const d = snap.data()
 setGameId(id)
 setPlayers(d.players||4)
@@ -113,7 +123,7 @@ else if(status==="vote") setBg("bg2")
 else setBg("bg2")
 setScreen(status)
 }catch(e){
-setError(e?.message||"Errore caricamento partita.")
+showToast(e?.message||"Errore caricamento partita.")
 }finally{
 setLoadingGameId(null)
 }
@@ -125,13 +135,14 @@ if(!confirm("Eliminare questa partita?")) return
 try{
 await deleteDoc(doc(db,"games",id))
 setMyGames(prev=>prev.filter(g=>g.id!==id))
+showToast("Partita eliminata.","success")
 }catch(err){
-setError(err?.message||"Errore eliminazione.")
+showToast(err?.message||"Errore eliminazione.")
 }
 }
 
 function goBack(){
-setError(null)
+setToast(null)
 if(screen==="home"){
 if(mode!==null) setMode(null)
 else signOut(auth).then(()=>{ setScreen("login") })
@@ -142,19 +153,19 @@ else if(screen==="result"){ setBg("bg1"); setScreen("home"); setReveal(false); f
 }
 
 async function login(){
-setError(null)
+setToast(null)
 setLoading("login")
 try{
 await signInWithPopup(auth,googleProvider)
 }catch(e){
-setError(e?.message||"Errore di accesso. Riprova.")
+showToast(e?.message||"Errore di accesso. Riprova.")
 }finally{
 setLoading(null)
 }
 }
 
 async function createGame(){
-setError(null)
+setToast(null)
 setLoading("createGame")
 try{
 setBg("bg2")
@@ -170,8 +181,9 @@ setGameId(docRef.id)
 setPlayerAvatars([])
 setRestaurantAvatars([])
 setScreen("setup")
+showToast("Partita creata. Imposta i nomi.","success")
 }catch(e){
-setError(e?.message||"Errore creazione partita. Riprova.")
+showToast(e?.message||"Errore creazione partita. Riprova.")
 }finally{
 setLoading(null)
 }
@@ -219,10 +231,10 @@ return playersOk && restaurantsOk
 
 async function startGame(){
 if(!isSetupValid()){
-setError("Inserisci tutti i nomi di giocatori e ristoranti.")
+showToast("Inserisci tutti i nomi di giocatori e ristoranti.")
 return
 }
-setError(null)
+setToast(null)
 setLoading("startGame")
 const votesInit=[]
 for(let i=0;i<restaurants;i++) votesInit.push({...emptyVotes})
@@ -238,8 +250,9 @@ votes:votesInit,
 status:"vote"
 },{merge:true})
 setScreen("vote")
+showToast("Votazione avviata.","success")
 }catch(e){
-setError(e?.message||"Errore avvio votazione. Riprova.")
+showToast(e?.message||"Errore avvio votazione. Riprova.")
 }finally{
 setLoading(null)
 }
@@ -253,16 +266,21 @@ setVotes(updated)
 }
 
 async function nextRestaurant(){
+setSavingNext(true)
 const next = currentRestaurant + 1
 try{
 await setDoc(doc(db,"games",gameId),{ votes, currentRestaurant: next },{merge:true})
-}catch(_){}
 if(currentRestaurant < restaurants-1){
 setCurrentRestaurant(next)
 }else{
 try{ await setDoc(doc(db,"games",gameId),{ status:"result" },{merge:true}) }catch(_){}
 setBg("bg3")
 setScreen("result")
+}
+}catch(e){
+showToast(e?.message||"Errore salvataggio.")
+}finally{
+setSavingNext(false)
 }
 }
 
@@ -300,7 +318,6 @@ return(
 
 <div className="homeContent">
 <h1>Forchette & Polpette</h1>
-{error && <p className="errorMsg">{error}</p>}
 <button onClick={()=>{ playSound("click"); login() }} disabled={loading==="login"}>
 {loading==="login" ? "Caricamento…" : "Login con Google"}
 </button>
@@ -311,7 +328,6 @@ return(
 {screen==="home" &&(
 
 <div className="homeContent">
-      {error && <p className="errorMsg">{error}</p>}
       <div className="welcomeRow">
       {user?.photoURL && <img src={user.photoURL} alt="" className="avatar" />}
       <h2>Benvenuto {user?.displayName}</h2>
@@ -471,10 +487,9 @@ return(
 
       )}
       
-      {screen==="setup" &&(
-      
+{screen==="setup" &&(
+
       <>
-      {error && <p className="errorMsg">{error}</p>}
       <h2>Imposta la partita</h2>
       
       <h3>Giocatori</h3>
@@ -493,7 +508,7 @@ return(
       type="text"
       placeholder={`Nome giocatore ${i+1}`}
       value={playerNames[i]||""}
-      onChange={(e)=>{ setError(null); updatePlayerName(i,e.target.value) }}
+      onChange={(e)=>{ setToast(null); updatePlayerName(i,e.target.value) }}
       />
       </div>
       ))}
@@ -514,7 +529,7 @@ return(
       type="text"
       placeholder={`Nome ristorante ${i+1}`}
       value={restaurantNames[i]||""}
-      onChange={(e)=>{ setError(null); updateRestaurantName(i,e.target.value) }}
+      onChange={(e)=>{ setToast(null); updateRestaurantName(i,e.target.value) }}
       />
       </div>
       ))}
@@ -604,8 +619,8 @@ onClick={()=>selectVote(cat.key,n)}
 
 ))}
 
-<button onClick={()=>{ playSound("next"); nextRestaurant() }}>
-Prossimo ristorante
+<button onClick={()=>{ playSound("next"); nextRestaurant() }} disabled={savingNext}>
+{savingNext ? "Salvataggio…" : "Prossimo ristorante"}
 </button>
 
 </>
@@ -665,6 +680,12 @@ return (
 {screen!=="login" && screen!=="home" && (
 <div className="bottomBar">
 <button type="button" className="backButton" onClick={goBack}>Indietro</button>
+</div>
+)}
+
+{toast && (
+<div className={`toast toast--${toast.type}`} role="alert" onClick={()=>setToast(null)}>
+{toast.message}
 </div>
 )}
 
