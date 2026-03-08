@@ -1,7 +1,7 @@
 import "./App.css"
 import { useState, useEffect, useRef } from "react"
 import { db, auth, googleProvider } from "./firebase"
-import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth"
+import { signInWithPopup, signOut, onAuthStateChanged, deleteUser, reauthenticateWithPopup } from "firebase/auth"
 import { collection, addDoc, doc, setDoc, getDoc, getDocs, query, where, deleteDoc, onSnapshot } from "firebase/firestore"
 import { BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts"
 import { QRCodeSVG } from "qrcode.react"
@@ -41,6 +41,8 @@ const [joinInput,setJoinInput] = useState("")
 const [myPlayerIndex,setMyPlayerIndex] = useState(null)
 const [joiningGameId,setJoiningGameId] = useState(null)
 const [gameOwner,setGameOwner] = useState(null)
+const [joinNickname,setJoinNickname] = useState("")
+const [lobbyParticipantCount,setLobbyParticipantCount] = useState(0)
 const pickerCloseRef = useRef(null)
 
 const voteCategories=[
@@ -134,6 +136,22 @@ const params=new URLSearchParams(typeof window!=="undefined"?window.location.sea
 const code=params.get("join")
 if(code&&user&&screen==="home"&&mode===null){ setJoinInput(code.toUpperCase()); setScreen("join") }
 },[user,screen,mode])
+useEffect(()=>{
+if(screen!=="lobby"||!gameId) return
+const unsub=onSnapshot(doc(db,"games",gameId),(snap)=>{
+if(!snap.exists()) return
+const participants=snap.data().participants||{}
+setLobbyParticipantCount(Object.keys(participants).length)
+})
+return ()=>unsub()
+},[screen,gameId])
+useEffect(()=>{
+const base="Forchette & Polpette"
+if(screen==="lobby"&&joinCode){ document.title=`Entra in partita – ${base}` }
+else if(screen==="join"&&joinInput){ document.title=`Codice partita – ${base}` }
+else{ document.title=`${base} – 4 Spadellate` }
+return ()=>{ document.title="Forchette & Polpette – 4 Spadellate" }
+},[screen,joinCode,joinInput])
 
 function showToast(message,type="error"){
 setToast({ message, type })
@@ -221,7 +239,7 @@ else if(screen==="setup"){ setBg("bg1"); setScreen("home"); fetchMyGames() }
 else if(screen==="lobby"){ setScreen("setup") }
 else if(screen==="vote"){ setScreen(voteMode==="multi"?"home":"setup") }
 else if(screen==="result"){ setBg("bg1"); setScreen("home"); setReveal(false); fetchMyGames() }
-else if(screen==="join"||screen==="joinPickName"){ setScreen("home"); setJoinInput(""); setJoiningGameId(null) }
+else if(screen==="join"||screen==="joinPickName"){ setScreen("home"); setJoinInput(""); setJoinNickname(""); setJoiningGameId(null) }
 }
 
 async function login(){
@@ -232,6 +250,27 @@ await signInWithPopup(auth,googleProvider)
 }catch(e){
 if(isAuthError(e)){ handleSessionExpired(); return }
 showToast(e?.message||"Errore di accesso. Riprova.")
+}finally{
+setLoading(null)
+}
+}
+
+async function deleteAccount(){
+if(!window.confirm("Vuoi cancellare il tuo account e tutti i dati collegati? Verranno eliminate tutte le partite di cui sei proprietario. Dovrai accedere di nuovo con Google per confermare. Questa azione non si può annullare.")) return
+setToast(null)
+setLoading("deleteAccount")
+try{
+const q=query(collection(db,"games"),where("owner","==",user.uid))
+const snap=await getDocs(q)
+await Promise.all(snap.docs.map(d=>deleteDoc(doc(db,"games",d.id))))
+await reauthenticateWithPopup(auth.currentUser,googleProvider)
+await deleteUser(auth.currentUser)
+setScreen("login")
+setUser(null)
+showToast("Account e dati cancellati.","success")
+}catch(e){
+if(isAuthError(e)){ handleSessionExpired(); return }
+showToast(e?.message||"Errore. Riprova o contatta l’assistenza.")
 }finally{
 setLoading(null)
 }
@@ -409,13 +448,30 @@ showToast(e?.message||"Errore ricerca partita.")
 setJoiningGameId(null)
 }
 }
-async function joinAsPlayer(idx){
+async function joinWithNickname(){
+const nick=(joinNickname||"").trim()
+if(!nick){ showToast("Scrivi un nickname per entrare."); return }
 setLoading("joinAsPlayer")
 try{
-await setDoc(doc(db,"games",gameId),{ [`participants.${user.uid}`]:idx },{merge:true})
-setMyPlayerIndex(idx)
+const snap=await getDoc(doc(db,"games",gameId))
+if(!snap.exists()){ showToast("Partita non trovata."); return }
+const data=snap.data()
+const participants=data.participants||{}
+const taken=new Set(Object.values(participants))
+let freeIndex=null
+for(let i=0;i<(data.players||4);i++){ if(!taken.has(i)){ freeIndex=i; break } }
+if(freeIndex==null){ showToast("Partita piena."); return }
+const updatedNames=[...(data.playerNames||[])];
+updatedNames[freeIndex]=nick
+await setDoc(doc(db,"games",gameId),{
+[`participants.${user.uid}`]:freeIndex,
+playerNames:updatedNames
+},{merge:true})
+setMyPlayerIndex(freeIndex)
+setPlayerNames(updatedNames)
+setJoinNickname("")
 setScreen("vote")
-showToast(`Entrato come ${playerNames[idx]||"giocatore"}.`,"success")
+showToast(`Entrato come ${nick}.`,"success")
 }catch(e){
 if(isAuthError(e)){ handleSessionExpired(); return }
 showToast(e?.message||"Errore.")
@@ -495,7 +551,7 @@ Sei offline. I dati potrebbero non essere aggiornati.
 
 <div className="app">
 
-<main id="main" className="appContent">
+<main id="main" className="appContent" aria-busy={isBusy}>
 
 <div key={screen} className="screenTransition">
 
@@ -503,7 +559,7 @@ Sei offline. I dati potrebbero non essere aggiornati.
 
 <div className="homeContent">
 <h1>Forchette & Polpette</h1>
-<button onClick={()=>{ playSound("click"); login() }} disabled={loading==="login"}>
+<button onClick={()=>{ playSound("click"); login() }} disabled={loading==="login"} aria-busy={loading==="login"} aria-label="Accedi con Google" className={loading==="login"?"btnLoading":""}>
 {loading==="login" ? "Caricamento…" : "Login con Google"}
 </button>
 </div>
@@ -558,20 +614,20 @@ Sei offline. I dati potrebbero non essere aggiornati.
       <input type="checkbox" checked={soundEnabled} onChange={(e)=>setSoundEnabled(e.target.checked)} />
       <span>Audio nella partita</span>
       </label>
-      <div className="homeBackWrap">
-      <button type="button" className="backButton" onClick={()=>{ setJoinInput(""); setScreen("join") }} aria-label="Entra in partita">Entra in partita</button>
+<div className="homeBackWrap">
+      <button type="button" className="backButton" onClick={()=>{ setJoinInput(""); setScreen("join") }} aria-label="Entra in partita con codice">Entra in partita</button>
       </div>
       <div className="homeBackWrap">
-      <button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
+      <button type="button" className="backButton" onClick={goBack} aria-label="Torna alla schermata precedente">Indietro</button>
       </div>
       </>
       )}
-      
+
       {/* Dettaglio modalità CLASSICA: 4 giocatori, 4 ristoranti non modificabili */}
       {mode==="classic" && (
       <>
       <div className="homeBackWrap">
-      <button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
+      <button type="button" className="backButton" onClick={goBack} aria-label="Torna alla schermata precedente">Indietro</button>
       </div>
       <button className="selected">Classica</button>
       <p>4 giocatori e 4 ristoranti</p>
@@ -592,7 +648,7 @@ Sei offline. I dati potrebbero non essere aggiornati.
       {mode==="custom" && (
       <>
       <div className="homeBackWrap">
-      <button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
+      <button type="button" className="backButton" onClick={goBack} aria-label="Torna alla schermata precedente">Indietro</button>
       </div>
       <button className="selected">Personalizzata</button>
       <h3 className="customLabel">Come votare?</h3>
@@ -634,7 +690,7 @@ Sei offline. I dati potrebbero non essere aggiornati.
       {mode==="oneshot" && (
       <>
       <div className="homeBackWrap">
-      <button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
+      <button type="button" className="backButton" onClick={goBack} aria-label="Torna alla schermata precedente">Indietro</button>
       </div>
       <button className="selected">One shot</button>
       <h3 className="customLabel">Come votare?</h3>
@@ -683,6 +739,12 @@ Sei offline. I dati potrebbero non essere aggiornati.
       </>
       )}
 
+      <div className="homeBackWrap deleteAccountWrap">
+      <button type="button" className="backButton deleteAccountButton" onClick={deleteAccount} disabled={loading==="deleteAccount"} aria-busy={loading==="deleteAccount"} aria-label="Elimina account e tutti i dati">
+      {loading==="deleteAccount" ? "Cancellazione…" : "Cancella account e dati"}
+      </button>
+      </div>
+
 </div>
 
       )}
@@ -692,26 +754,25 @@ Sei offline. I dati potrebbero non essere aggiornati.
 <h2>Entra in partita</h2>
 <p className="hintMsg">Inserisci il codice di 6 caratteri mostrato dall’host.</p>
 <input type="text" maxLength={6} value={joinInput} onChange={(e)=>setJoinInput(e.target.value.toUpperCase())} placeholder="CODICE" className="joinCodeInput" />
-<button onClick={joinWithCode} disabled={joiningGameId!=null}>
+<button onClick={joinWithCode} disabled={joiningGameId!=null} aria-busy={joiningGameId!=null} className={joiningGameId!=null?"btnLoading":""}>
 {joiningGameId!=null ? "Ricerca…" : "Entra"}
 </button>
 <div className="homeBackWrap">
-<button type="button" className="backButton" onClick={()=>{ setScreen("home"); setJoinInput("") }}>Indietro</button>
+<button type="button" className="backButton" onClick={()=>{ setScreen("home"); setJoinInput("") }} aria-label="Torna alla home">Indietro</button>
 </div>
 </div>
 )}
 
 {screen==="joinPickName" &&(
 <div className="homeContent">
-<h2>Scegli il tuo nome</h2>
-<p className="hintMsg">Sei uno di questi giocatori?</p>
-{playerNames.map((name,i)=>(
-<button key={i} type="button" className="playerNameJoin" onClick={()=>joinAsPlayer(i)} disabled={loading==="joinAsPlayer"}>
-{name||`Giocatore ${i+1}`}
+<h2>Inserisci il tuo nickname</h2>
+<p className="hintMsg">Come in Kahoot: scrivi il nome con cui vuoi giocare.</p>
+<input type="text" maxLength={20} value={joinNickname} onChange={(e)=>setJoinNickname(e.target.value)} placeholder="Il tuo nome" className="joinCodeInput joinNicknameInput" autoFocus />
+<button onClick={joinWithNickname} disabled={loading==="joinAsPlayer"} aria-busy={loading==="joinAsPlayer"} className={loading==="joinAsPlayer"?"btnLoading":""}>
+{loading==="joinAsPlayer" ? "Entrata…" : "Entra in partita"}
 </button>
-))}
 <div className="homeBackWrap">
-<button type="button" className="backButton" onClick={()=>{ setScreen("home"); setGameId(null) }}>Indietro</button>
+<button type="button" className="backButton" onClick={()=>{ setScreen("home"); setGameId(null); setJoinNickname("") }} aria-label="Torna alla home">Indietro</button>
 </div>
 </div>
 )}
@@ -724,12 +785,13 @@ Sei offline. I dati potrebbero non essere aggiornati.
 <div className="lobbyQR">
 <QRCodeSVG value={joinUrl(joinCode)} size={200} level="M" />
 </div>
-<p className="hintMsg">I giocatori aprono l’app, scelgono «Entra in partita» e inseriscono il codice (o inquadrano il QR).</p>
-<button onClick={()=>{ playSound("click"); startMultiVote() }} disabled={loading==="startMultiVote"}>
-{loading==="startMultiVote" ? "Avvio…" : "Avvia votazione"}
+<p className="hintMsg">I giocatori aprono il link nel browser (o inquadrano il QR), inseriscono il codice, fanno login Google e scrivono il proprio nickname.</p>
+<p className="lobbyCount">{lobbyParticipantCount} / {players} giocatori</p>
+<button onClick={()=>{ playSound("click"); startMultiVote() }} disabled={loading==="startMultiVote"} aria-busy={loading==="startMultiVote"} className={loading==="startMultiVote"?"btnLoading":""}>
+{loading==="startMultiVote" ? "Avvio…" : lobbyParticipantCount>=players ? "Pronti!" : "Avvia votazione"}
 </button>
 <div className="homeBackWrap">
-<button type="button" className="backButton" onClick={goBack}>Indietro</button>
+<button type="button" className="backButton" onClick={goBack} aria-label="Torna al setup">Indietro</button>
 </div>
 </div>
 )}
@@ -821,9 +883,9 @@ Sei offline. I dati potrebbero non essere aggiornati.
       </label>
       {!isSetupValid() && <p className="hintMsg">Compila tutti i nomi per continuare.</p>}
       
-      <button onClick={()=>{ playSound("click"); startGame() }} disabled={loading==="startGame" || !isSetupValid()}>
-      {loading==="startGame" ? "Caricamento…" : "Inizia votazione"}
-      </button>
+<button onClick={()=>{ playSound("click"); startGame() }} disabled={loading==="startGame" || !isSetupValid()} aria-busy={loading==="startGame"} className={loading==="startGame"?"btnLoading":""}>
+{loading==="startGame" ? "Caricamento…" : "Inizia votazione"}
+</button>
       
       </>
       
@@ -853,7 +915,7 @@ return (
 </span>
 )})}
 </div>
-<button onClick={()=>{ playSound("next"); nextRestaurant() }} disabled={savingNext}>
+<button onClick={()=>{ playSound("next"); nextRestaurant() }} disabled={savingNext} aria-busy={savingNext} className={savingNext?"btnLoading":""}>
 {savingNext ? "Salvataggio…" : "Prossimo ristorante"}
 </button>
 </>
@@ -873,7 +935,7 @@ return (
 </div>
 )})}
 {voteMode==="single"&&(
-<button onClick={()=>{ playSound("next"); nextRestaurant() }} disabled={savingNext}>
+<button onClick={()=>{ playSound("next"); nextRestaurant() }} disabled={savingNext} aria-busy={savingNext} className={savingNext?"btnLoading":""}>
 {savingNext ? "Salvataggio…" : "Prossimo ristorante"}
 </button>
 )}
@@ -933,7 +995,7 @@ return (
 
 {screen!=="login" && screen!=="home" && screen!=="join" && screen!=="joinPickName" && screen!=="lobby" && (
 <div className="bottomBar">
-<button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
+<button type="button" className="backButton" onClick={goBack} aria-label="Torna alla schermata precedente">Indietro</button>
 </div>
 )}
 
