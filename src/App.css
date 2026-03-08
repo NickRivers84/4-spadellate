@@ -237,6 +237,58 @@
   margin-top:24px;
   margin-bottom:8px;
   }
+  .voteModeChoice{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  width:100%;
+  max-width:320px;
+  margin:12px 0;
+  }
+  .voteModeChoice button{
+  margin:4px 0;
+  }
+  .lobbyContent .lobbyCodeLabel{
+  margin-top:12px;
+  font-size:14px;
+  opacity:0.9;
+  }
+  .lobbyCode{
+  font-size:2rem;
+  font-weight:800;
+  letter-spacing:0.3em;
+  margin:8px 0 20px 0;
+  }
+  .lobbyQR{
+  margin:16px 0;
+  padding:12px;
+  background:#fff;
+  border-radius:12px;
+  display:inline-block;
+  }
+  .joinCodeInput{
+  font-size:1.5rem;
+  letter-spacing:0.2em;
+  text-align:center;
+  text-transform:uppercase;
+  margin:12px 0;
+  }
+  .playerNameJoin{
+  display:block;
+  width:100%;
+  max-width:280px;
+  margin:8px auto;
+  }
+  .whoVoted{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  justify-content:center;
+  margin:16px 0;
+  font-size:14px;
+  }
+  .whoVoted .voted{ color:green; }
+  .whoVoted .pending{ opacity:0.7; }
   .gameList{
   width:100%;
   max-width:320px;

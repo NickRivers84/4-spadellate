@@ -2,8 +2,9 @@ import "./App.css"
 import { useState, useEffect, useRef } from "react"
 import { db, auth, googleProvider } from "./firebase"
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth"
-import { collection, addDoc, doc, setDoc, getDoc, getDocs, query, where, deleteDoc } from "firebase/firestore"
+import { collection, addDoc, doc, setDoc, getDoc, getDocs, query, where, deleteDoc, onSnapshot } from "firebase/firestore"
 import { BarChart, Bar, XAxis, YAxis, Tooltip } from "recharts"
+import { QRCodeSVG } from "qrcode.react"
 
 export default function App(){
 
@@ -34,6 +35,12 @@ const [bonusEnabled,setBonusEnabled] = useState(true)
 const [savingNext,setSavingNext] = useState(false)
 const [deletingGameId,setDeletingGameId] = useState(null)
 const [isOnline,setIsOnline] = useState(typeof navigator!=="undefined"?navigator.onLine:true)
+const [voteMode,setVoteMode] = useState("single")
+const [joinCode,setJoinCode] = useState("")
+const [joinInput,setJoinInput] = useState("")
+const [myPlayerIndex,setMyPlayerIndex] = useState(null)
+const [joiningGameId,setJoiningGameId] = useState(null)
+const [gameOwner,setGameOwner] = useState(null)
 const pickerCloseRef = useRef(null)
 
 const voteCategories=[
@@ -105,15 +112,40 @@ useEffect(()=>{
 if(openPicker && pickerCloseRef.current) pickerCloseRef.current.focus()
 },[openPicker])
 useEffect(()=>{
+if(screen!=="vote"||voteMode!=="multi"||!gameId) return
+const unsub=onSnapshot(doc(db,"games",gameId),(snap)=>{
+if(!snap.exists()) return
+const d=snap.data()
+setCurrentRestaurant(d.currentRestaurant??0)
+setVotes(d.votes||[])
+if(d.status==="result"){ setBg("bg3"); setReveal(true); setScreen("result") }
+})
+return ()=>unsub()
+},[screen,voteMode,gameId])
+useEffect(()=>{
 const on=()=>setIsOnline(true)
 const off=()=>setIsOnline(false)
 window.addEventListener("online",on)
 window.addEventListener("offline",off)
 return ()=>{ window.removeEventListener("online",on); window.removeEventListener("offline",off) }
 },[])
+useEffect(()=>{
+const params=new URLSearchParams(typeof window!=="undefined"?window.location.search:"")
+const code=params.get("join")
+if(code&&user&&screen==="home"&&mode===null){ setJoinInput(code.toUpperCase()); setScreen("join") }
+},[user,screen,mode])
 
 function showToast(message,type="error"){
 setToast({ message, type })
+}
+function generateJoinCode(){
+const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+let code=""
+for(let i=0;i<6;i++) code+=chars[Math.floor(Math.random()*chars.length)]
+return code
+}
+function joinUrl(code){
+return `${typeof window!=="undefined"?window.location.origin:""}${BASE}/?join=${code}`
 }
 function isAuthError(e){
 const code = e?.code || ""
@@ -135,6 +167,7 @@ const snap = await getDoc(doc(db,"games",id))
 if(!snap.exists() || snap.data().owner!==user.uid){ showToast("Partita non trovata."); return }
 const d = snap.data()
 setGameId(id)
+setGameOwner(d.owner||null)
 setPlayers(d.players||4)
 setRestaurants(d.restaurants||4)
 setMode(d.mode||"classic")
@@ -143,6 +176,9 @@ setRestaurantNames(d.restaurantNames||[])
 setPlayerAvatars(d.playerAvatars||[])
 setRestaurantAvatars(d.restaurantAvatars||[])
 setBonusEnabled(d.bonusEnabled!==false)
+setVoteMode(d.voteMode||"single")
+setJoinCode(d.joinCode||"")
+setMyPlayerIndex(d.participants?.[user.uid]??null)
 setVotes(d.votes||[])
 setCurrentRestaurant(d.currentRestaurant!= null ? Math.min(d.currentRestaurant, (d.restaurants||4)-1) : 0)
 setReveal(false)
@@ -182,8 +218,10 @@ if(mode!==null) setMode(null)
 else signOut(auth).then(()=>{ setScreen("login") })
 }
 else if(screen==="setup"){ setBg("bg1"); setScreen("home"); fetchMyGames() }
-else if(screen==="vote"){ setScreen("setup") }
+else if(screen==="lobby"){ setScreen("setup") }
+else if(screen==="vote"){ setScreen(voteMode==="multi"?"home":"setup") }
 else if(screen==="result"){ setBg("bg1"); setScreen("home"); setReveal(false); fetchMyGames() }
+else if(screen==="join"||screen==="joinPickName"){ setScreen("home"); setJoinInput(""); setJoiningGameId(null) }
 }
 
 async function login(){
@@ -209,10 +247,12 @@ owner:user.uid,
 players,
 restaurants,
 mode,
+voteMode,
 status:"setup",
 createdAt:Date.now()
 })
 setGameId(docRef.id)
+setGameOwner(user.uid)
 setPlayerAvatars([])
 setRestaurantAvatars([])
 setScreen("setup")
@@ -272,21 +312,45 @@ return
 }
 setToast(null)
 setLoading("startGame")
-const votesInit=[]
-for(let i=0;i<restaurants;i++) votesInit.push({...emptyVotes})
-setVotes(votesInit)
 try{
+if(voteMode==="multi"){
+const code=generateJoinCode()
+const votesMultiInit=Array.from({length:restaurants},()=>({}))
 await setDoc(doc(db,"games",gameId),{
 playerNames,
 restaurantNames,
 playerAvatars: playerAvatars.slice(0,players),
 restaurantAvatars: restaurantAvatars.slice(0,restaurants),
 bonusEnabled,
+voteMode:"multi",
+joinCode:code,
+votes:votesMultiInit,
+participants:{},
+status:"lobby",
+currentRestaurant:0
+},{merge:true})
+setVotes(votesMultiInit)
+setJoinCode(code)
+setScreen("lobby")
+showToast("Condividi il codice con i giocatori.","success")
+}else{
+const votesInit=[]
+for(let i=0;i<restaurants;i++) votesInit.push({...emptyVotes})
+setVotes(votesInit)
+await setDoc(doc(db,"games",gameId),{
+playerNames,
+restaurantNames,
+playerAvatars: playerAvatars.slice(0,players),
+restaurantAvatars: restaurantAvatars.slice(0,restaurants),
+bonusEnabled,
+voteMode:"single",
 votes:votesInit,
-status:"vote"
+status:"vote",
+currentRestaurant:0
 },{merge:true})
 setScreen("vote")
 showToast("Votazione avviata.","success")
+}
 }catch(e){
 if(isAuthError(e)){ handleSessionExpired(); return }
 showToast(e?.message||"Errore avvio votazione. Riprova.")
@@ -294,9 +358,80 @@ showToast(e?.message||"Errore avvio votazione. Riprova.")
 setLoading(null)
 }
 }
+async function startMultiVote(){
+setLoading("startMultiVote")
+try{
+await setDoc(doc(db,"games",gameId),{ status:"vote" },{merge:true})
+setScreen("vote")
+showToast("Votazione avviata.","success")
+}catch(e){
+if(isAuthError(e)){ handleSessionExpired(); return }
+showToast(e?.message||"Errore.")
+}finally{
+setLoading(null)
+}
+}
+async function joinWithCode(){
+const code=(joinInput||"").trim().toUpperCase()
+if(!code||code.length!==6){ showToast("Inserisci un codice di 6 caratteri."); return }
+setToast(null)
+setJoiningGameId("_")
+try{
+const q=query(collection(db,"games"),where("joinCode","==",code),where("status","in",["lobby","vote"]))
+const snap=await getDocs(q)
+if(snap.empty){ showToast("Partita non trovata o già terminata."); return }
+const d=snap.docs[0]
+const data=d.data()
+setGameId(d.id)
+setGameOwner(data.owner||null)
+setPlayers(data.players||4)
+setRestaurants(data.restaurants||4)
+setPlayerNames(data.playerNames||[])
+setRestaurantNames(data.restaurantNames||[])
+setPlayerAvatars(data.playerAvatars||[])
+setRestaurantAvatars(data.restaurantAvatars||[])
+setVoteMode("multi")
+setVotes(data.votes||[])
+setCurrentRestaurant(data.currentRestaurant??0)
+setBonusEnabled(data.bonusEnabled!==false)
+setBg("bg2")
+if(data.participants&&data.participants[user.uid]!=null){
+setMyPlayerIndex(data.participants[user.uid])
+setScreen("vote")
+showToast("Bentornato nella partita.","success")
+}else{
+setScreen("joinPickName")
+}
+}catch(e){
+if(isAuthError(e)){ handleSessionExpired(); return }
+showToast(e?.message||"Errore ricerca partita.")
+}finally{
+setJoiningGameId(null)
+}
+}
+async function joinAsPlayer(idx){
+setLoading("joinAsPlayer")
+try{
+await setDoc(doc(db,"games",gameId),{ [`participants.${user.uid}`]:idx },{merge:true})
+setMyPlayerIndex(idx)
+setScreen("vote")
+showToast(`Entrato come ${playerNames[idx]||"giocatore"}.`,"success")
+}catch(e){
+if(isAuthError(e)){ handleSessionExpired(); return }
+showToast(e?.message||"Errore.")
+}finally{
+setLoading(null)
+}
+}
 
 function selectVote(category,value){
 playSound("click")
+if(voteMode==="multi"&&myPlayerIndex!=null){
+const updated=votes.map((v,i)=>i===currentRestaurant?{...v,[String(myPlayerIndex)]:{...(v[String(myPlayerIndex)]||{}),[category]:value}}:v)
+setVotes(updated)
+setDoc(doc(db,"games",gameId),{ votes:updated },{merge:true}).catch(()=>{})
+return
+}
 const updated=[...votes]
 updated[currentRestaurant]={...updated[currentRestaurant],[category]:value}
 setVotes(updated)
@@ -325,15 +460,17 @@ setSavingNext(false)
 function ranking(){
 
 return restaurantNames.map((name,i)=>{
-
-const total = Object.values(votes[i]||{})
-.reduce((a,b)=>a+(b||0),0)
-
-return {name,total}
-
+const v=votes[i]||{}
+let total=0
+if(voteMode==="multi"&&typeof v==="object"&&!Array.isArray(v)){
+Object.values(v).forEach((o)=>{
+if(o&&typeof o==="object") total+=Object.values(o).reduce((a,b)=>a+(b||0),0)
 })
-.sort((a,b)=>b.total-a.total)
-
+}else{
+total=Object.values(v).reduce((a,b)=>a+(b||0),0)
+}
+return {name,total}
+}).sort((a,b)=>b.total-a.total)
 }
 
 const data = ranking()
@@ -422,6 +559,9 @@ Sei offline. I dati potrebbero non essere aggiornati.
       <span>Audio nella partita</span>
       </label>
       <div className="homeBackWrap">
+      <button type="button" className="backButton" onClick={()=>{ setJoinInput(""); setScreen("join") }} aria-label="Entra in partita">Entra in partita</button>
+      </div>
+      <div className="homeBackWrap">
       <button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
       </div>
       </>
@@ -435,14 +575,19 @@ Sei offline. I dati potrebbero non essere aggiornati.
       </div>
       <button className="selected">Classica</button>
       <p>4 giocatori e 4 ristoranti</p>
-      <div className="startButtonWrap">
+      <h3 className="customLabel">Come votare?</h3>
+      <div className="voteModeChoice">
+      <button type="button" className={voteMode==="single"?"selected":""} onClick={()=>setVoteMode("single")}>Tutti da questo dispositivo</button>
+      <button type="button" className={voteMode==="multi"?"selected":""} onClick={()=>setVoteMode("multi")}>Ognuno dal proprio (codice partita)</button>
+      </div>
+<div className="startButtonWrap">
       <button onClick={()=>{ playSound("click"); createGame() }} disabled={loading==="createGame"}>
-      {loading==="createGame" ? "Caricamento…" : "Avvia partita"}
+      {loading==="createGame" ? "Caricamento…" : "Avvia partita"}{voteMode==="multi" ? " (codice/QR)" : ""}
       </button>
       </div>
       </>
       )}
-      
+
       {/* Dettaglio modalità PERSONALIZZATA: slider giocatori e ristoranti da 2 a 8 */}
       {mode==="custom" && (
       <>
@@ -450,7 +595,11 @@ Sei offline. I dati potrebbero non essere aggiornati.
       <button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
       </div>
       <button className="selected">Personalizzata</button>
-      
+      <h3 className="customLabel">Come votare?</h3>
+      <div className="voteModeChoice">
+      <button type="button" className={voteMode==="single"?"selected":""} onClick={()=>setVoteMode("single")}>Tutti da questo dispositivo</button>
+      <button type="button" className={voteMode==="multi"?"selected":""} onClick={()=>setVoteMode("multi")}>Ognuno dal proprio (codice partita)</button>
+      </div>
       <div className="sliderWrap">
       <h3 className="customLabel">Numero giocatori: {players}</h3>
       <input
@@ -473,14 +622,14 @@ Sei offline. I dati potrebbero non essere aggiornati.
       />
       </div>
       
-      <div className="startButtonWrap">
+<div className="startButtonWrap">
       <button onClick={()=>{ playSound("click"); createGame() }} disabled={loading==="createGame"}>
-      {loading==="createGame" ? "Caricamento…" : "Avvia partita"}
+      {loading==="createGame" ? "Caricamento…" : "Avvia partita"}{voteMode==="multi" ? " (codice/QR)" : ""}
       </button>
       </div>
       </>
       )}
-      
+
       {/* Dettaglio modalità ONE SHOT: 1 ristorante, slider solo per numero giocatori */}
       {mode==="oneshot" && (
       <>
@@ -488,7 +637,11 @@ Sei offline. I dati potrebbero non essere aggiornati.
       <button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
       </div>
       <button className="selected">One shot</button>
-      
+      <h3 className="customLabel">Come votare?</h3>
+      <div className="voteModeChoice">
+      <button type="button" className={voteMode==="single"?"selected":""} onClick={()=>setVoteMode("single")}>Tutti da questo dispositivo</button>
+      <button type="button" className={voteMode==="multi"?"selected":""} onClick={()=>setVoteMode("multi")}>Ognuno dal proprio (codice partita)</button>
+      </div>
       <div className="sliderWrap">
       <h3 className="customLabel">Numero giocatori: {players}</h3>
       <input
@@ -499,12 +652,11 @@ Sei offline. I dati potrebbero non essere aggiornati.
       onChange={(e)=>setPlayers(parseInt(e.target.value))}
       />
       </div>
-      
       <p>Ristoranti: 1 (One shot)</p>
       
       <div className="startButtonWrap">
       <button onClick={()=>{ playSound("click"); createGame() }} disabled={loading==="createGame"}>
-      {loading==="createGame" ? "Caricamento…" : "Avvia partita"}
+      {loading==="createGame" ? "Caricamento…" : "Avvia partita"}{voteMode==="multi" ? " (codice/QR)" : ""}
       </button>
       </div>
       </>
@@ -534,6 +686,53 @@ Sei offline. I dati potrebbero non essere aggiornati.
 </div>
 
       )}
+
+{screen==="join" &&(
+<div className="homeContent">
+<h2>Entra in partita</h2>
+<p className="hintMsg">Inserisci il codice di 6 caratteri mostrato dall’host.</p>
+<input type="text" maxLength={6} value={joinInput} onChange={(e)=>setJoinInput(e.target.value.toUpperCase())} placeholder="CODICE" className="joinCodeInput" />
+<button onClick={joinWithCode} disabled={joiningGameId!=null}>
+{joiningGameId!=null ? "Ricerca…" : "Entra"}
+</button>
+<div className="homeBackWrap">
+<button type="button" className="backButton" onClick={()=>{ setScreen("home"); setJoinInput("") }}>Indietro</button>
+</div>
+</div>
+)}
+
+{screen==="joinPickName" &&(
+<div className="homeContent">
+<h2>Scegli il tuo nome</h2>
+<p className="hintMsg">Sei uno di questi giocatori?</p>
+{playerNames.map((name,i)=>(
+<button key={i} type="button" className="playerNameJoin" onClick={()=>joinAsPlayer(i)} disabled={loading==="joinAsPlayer"}>
+{name||`Giocatore ${i+1}`}
+</button>
+))}
+<div className="homeBackWrap">
+<button type="button" className="backButton" onClick={()=>{ setScreen("home"); setGameId(null) }}>Indietro</button>
+</div>
+</div>
+)}
+
+{screen==="lobby" &&(
+<div className="homeContent lobbyContent">
+<h2>Partita pronta</h2>
+<p className="lobbyCodeLabel">Codice d’ingresso</p>
+<p className="lobbyCode">{joinCode}</p>
+<div className="lobbyQR">
+<QRCodeSVG value={joinUrl(joinCode)} size={200} level="M" />
+</div>
+<p className="hintMsg">I giocatori aprono l’app, scelgono «Entra in partita» e inseriscono il codice (o inquadrano il QR).</p>
+<button onClick={()=>{ playSound("click"); startMultiVote() }} disabled={loading==="startMultiVote"}>
+{loading==="startMultiVote" ? "Avvio…" : "Avvia votazione"}
+</button>
+<div className="homeBackWrap">
+<button type="button" className="backButton" onClick={goBack}>Indietro</button>
+</div>
+</div>
+)}
       
 {screen==="setup" &&(
 
@@ -632,7 +831,6 @@ Sei offline. I dati potrebbero non essere aggiornati.
       
       
       {screen==="vote" &&(
-
 <>
 <p className="voteProgress">Ristorante {currentRestaurant + 1} di {restaurantNames.length}</p>
 <h2 className="voteRestaurantTitle">
@@ -640,43 +838,49 @@ Sei offline. I dati potrebbero non essere aggiornati.
 {restaurantNames[currentRestaurant]}
 </h2>
 
-{voteCategories.filter(cat=>cat.key!=="bonus"||bonusEnabled).map(cat=>(
-
-<div key={cat.key} className="voteRow">
-
-<p>{cat.label}</p>
-
-<div className="voteButtons">
-
-{[1,2,3,4,5].map(n=>(
-
-<button
-key={n}
-className={
-votes[currentRestaurant]?.[cat.key]===n
-?"selected":""
-}
-onClick={()=>selectVote(cat.key,n)}
->
-
-{n}
-
-</button>
-
-))}
-
+{voteMode==="multi"&&user?.uid===gameOwner ? (
+<>
+<p className="hintMsg">Attendi che tutti votino da proprio dispositivo.</p>
+<div className="whoVoted">
+{Array.from({length:players}).map((i)=>{
+const v=votes[currentRestaurant]||{}
+const o=v[String(i)]||{}
+const cats=voteCategories.filter(cat=>cat.key!=="bonus"||bonusEnabled)
+const hasVoted=cats.every(c=>o[c.key]!=null)
+return (
+<span key={i} className={hasVoted?"voted":"pending"}>
+{playerNames[i]||`Giocatore ${i+1}`}{hasVoted?" ✓":""}
+</span>
+)})}
 </div>
-
-</div>
-
-))}
-
 <button onClick={()=>{ playSound("next"); nextRestaurant() }} disabled={savingNext}>
 {savingNext ? "Salvataggio…" : "Prossimo ristorante"}
 </button>
+</>
+) : (
+<>
+{voteCategories.filter(cat=>cat.key!=="bonus"||bonusEnabled).map(cat=>{
+const myVotes=voteMode==="multi"&&myPlayerIndex!=null ? (votes[currentRestaurant]||{})[String(myPlayerIndex)]||{} : votes[currentRestaurant]||{}
+const sel=voteMode==="multi" ? myVotes[cat.key] : votes[currentRestaurant]?.[cat.key]
+return (
+<div key={cat.key} className="voteRow">
+<p>{cat.label}</p>
+<div className="voteButtons">
+{[1,2,3,4,5].map(n=>(
+<button key={n} className={sel===n?"selected":""} onClick={()=>selectVote(cat.key,n)}>{n}</button>
+))}
+</div>
+</div>
+)})}
+{voteMode==="single"&&(
+<button onClick={()=>{ playSound("next"); nextRestaurant() }} disabled={savingNext}>
+{savingNext ? "Salvataggio…" : "Prossimo ristorante"}
+</button>
+)}
+</>
+)}
 
 </>
-
 )}
 
 {screen==="result" &&(
@@ -727,7 +931,7 @@ return (
 
 </div>
 
-{screen!=="login" && screen!=="home" && (
+{screen!=="login" && screen!=="home" && screen!=="join" && screen!=="joinPickName" && screen!=="lobby" && (
 <div className="bottomBar">
 <button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
 </div>
