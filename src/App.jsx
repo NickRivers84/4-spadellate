@@ -28,6 +28,7 @@ const [loading,setLoading] = useState(null)
 const [error,setError] = useState(null)
 const [myGames,setMyGames] = useState([])
 const [loadingGameId,setLoadingGameId] = useState(null)
+const [openPicker,setOpenPicker] = useState(null)
 
 const voteCategories=[
 {key:"location",label:"Location"},
@@ -38,7 +39,9 @@ const voteCategories=[
 ]
 
 const PLAYER_AVATARS = ["👤","👩","👨","🧑","👴","👵","🧒","👦","👧","🧔","🧑‍🍳","🦸"]
-const RESTAURANT_AVATARS = ["🍕","🍔","🍝","🥗","🍣","🌮","🍳","🥐","☕","🍰","🍜","🥪"]
+const RESTAURANT_AVATAR_FILES = ["pizza.png","sushi.png","ramen.png","dumplings.png","steak.png","vegetariano.png","vegano.png","etnico.png","indiano.png","hamburger.png"]
+const BASE = (import.meta.env.BASE_URL || "/").replace(/\/?$/, "")
+const RESTAURANT_AVATARS = RESTAURANT_AVATAR_FILES.map(f=>`${BASE}/avatars/restaurants/${f}`)
 
 const emptyVotes={
 location:null,
@@ -71,6 +74,7 @@ setMyGames([])
 }
 
 useEffect(()=>{ fetchMyGames() },[user])
+useEffect(()=>{ if(screen!=="setup") setOpenPicker(null) },[screen])
 
 async function loadGame(id){
 setError(null)
@@ -465,19 +469,14 @@ return(
       
       {Array.from({length:players}).map((_,i)=>(
       <div key={i} className="setupRow">
-      <div className="avatarPicker">
-      {PLAYER_AVATARS.map((emoji,idx)=>(
       <button
-      key={idx}
       type="button"
-      className={`avatarOption ${(playerAvatars[i] ?? 0)===idx ? "selected" : ""}`}
-      onClick={()=>updatePlayerAvatar(i,idx)}
-      title={`Avatar ${idx+1}`}
+      className="avatarTrigger"
+      onClick={()=>setOpenPicker({type:"player",i})}
+      title="Scegli icona"
       >
-      {emoji}
+      <span className="avatarTriggerEmoji">{PLAYER_AVATARS[playerAvatars[i] ?? 0]}</span>
       </button>
-      ))}
-      </div>
       <input
       type="text"
       placeholder={`Nome giocatore ${i+1}`}
@@ -491,19 +490,14 @@ return(
       
       {Array.from({length:restaurants}).map((_,i)=>(
       <div key={i} className="setupRow">
-      <div className="avatarPicker">
-      {RESTAURANT_AVATARS.map((emoji,idx)=>(
       <button
-      key={idx}
       type="button"
-      className={`avatarOption ${(restaurantAvatars[i] ?? 0)===idx ? "selected" : ""}`}
-      onClick={()=>updateRestaurantAvatar(i,idx)}
-      title={`Icona ${idx+1}`}
+      className="avatarTrigger"
+      onClick={()=>setOpenPicker({type:"restaurant",i})}
+      title="Scegli icona"
       >
-      {emoji}
+      <img src={RESTAURANT_AVATARS[restaurantAvatars[i] ?? 0] ?? RESTAURANT_AVATARS[0]} alt="" className="avatarTriggerImg" />
       </button>
-      ))}
-      </div>
       <input
       type="text"
       placeholder={`Nome ristorante ${i+1}`}
@@ -512,6 +506,36 @@ return(
       />
       </div>
       ))}
+      
+      {openPicker && (
+      <div className="pickerOverlay" onClick={()=>setOpenPicker(null)}>
+      <div className="pickerModal" onClick={e=>e.stopPropagation()}>
+      <h4>{openPicker.type==="player" ? "Scegli icona giocatore" : "Scegli icona ristorante"}</h4>
+      <button type="button" className="pickerClose" onClick={()=>setOpenPicker(null)} aria-label="Chiudi">×</button>
+      <div className="pickerGrid">
+      {openPicker.type==="player" ? PLAYER_AVATARS.map((emoji,idx)=>(
+      <button
+      key={idx}
+      type="button"
+      className="pickerOption"
+      onClick={()=>{ updatePlayerAvatar(openPicker.i,idx); setOpenPicker(null) }}
+      >
+      {emoji}
+      </button>
+      )) : RESTAURANT_AVATARS.map((src,idx)=>(
+      <button
+      key={idx}
+      type="button"
+      className="pickerOption"
+      onClick={()=>{ updateRestaurantAvatar(openPicker.i,idx); setOpenPicker(null) }}
+      >
+      <img src={src} alt="" />
+      </button>
+      ))}
+      </div>
+      </div>
+      </div>
+      )}
       
       {!isSetupValid() && <p className="hintMsg">Compila tutti i nomi per continuare.</p>}
       
@@ -529,7 +553,7 @@ return(
 <>
 <p className="voteProgress">Ristorante {currentRestaurant + 1} di {restaurantNames.length}</p>
 <h2 className="voteRestaurantTitle">
-<span className="restaurantIcon">{RESTAURANT_AVATARS[restaurantAvatars[currentRestaurant] ?? 0]}</span>
+<img src={RESTAURANT_AVATARS[restaurantAvatars[currentRestaurant] ?? 0] ?? RESTAURANT_AVATARS[0]} alt="" className="restaurantIconImg" />
 {restaurantNames[currentRestaurant]}
 </h2>
 
@@ -591,11 +615,11 @@ Apri la busta
 
 {data.map((r,i)=>{
 const origIndex = restaurantNames.indexOf(r.name)
-const icon = RESTAURANT_AVATARS[restaurantAvatars[origIndex] ?? 0]
+const iconSrc = RESTAURANT_AVATARS[restaurantAvatars[origIndex] ?? 0] ?? RESTAURANT_AVATARS[0]
 return (
 <div key={i} className="resultBlock">
 <h3>
-<span className="resultIcon">{icon}</span>
+<img src={iconSrc} alt="" className="resultIconImg" />
 #{i+1} {r.name}
 </h3>
 <p>{r.total} punti</p>
