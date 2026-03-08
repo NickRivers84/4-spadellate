@@ -31,7 +31,7 @@ const [loadingGameId,setLoadingGameId] = useState(null)
 const [openPicker,setOpenPicker] = useState(null)
 
 const voteCategories=[
-{key:"location",label:"Location"},
+{key:"location",label:"Posizione"},
 {key:"menu",label:"Menu"},
 {key:"service",label:"Servizio"},
 {key:"price",label:"Conto"},
@@ -43,6 +43,14 @@ const RESTAURANT_AVATAR_FILES = ["pizza.png","sushi.png","ramen.png","dumplings.
 const BASE = (import.meta.env.BASE_URL || "/").replace(/\/?$/, "")
 const PLAYER_AVATARS = PLAYER_AVATAR_FILES.map(f=>`${BASE}/avatars/players/${f}`)
 const RESTAURANT_AVATARS = RESTAURANT_AVATAR_FILES.map(f=>`${BASE}/avatars/restaurants/${f}`)
+
+function playSound(name){
+try{
+const snd = new Audio(`${BASE}/sounds/${name}.mp3`)
+snd.volume = 0.4
+snd.play().catch(()=>{})
+}catch(_){}
+}
 
 const emptyVotes={
 location:null,
@@ -233,16 +241,10 @@ setLoading(null)
 }
 
 function selectVote(category,value){
-
+playSound("click")
 const updated=[...votes]
-
-updated[currentRestaurant]={
-...updated[currentRestaurant],
-[category]:value
-}
-
+updated[currentRestaurant]={...updated[currentRestaurant],[category]:value}
 setVotes(updated)
-
 }
 
 async function nextRestaurant(){
@@ -294,7 +296,7 @@ return(
 <div className="homeContent">
 <h1>Forchette & Polpette</h1>
 {error && <p className="errorMsg">{error}</p>}
-<button onClick={login} disabled={loading==="login"}>
+<button onClick={()=>{ playSound("click"); login() }} disabled={loading==="login"}>
 {loading==="login" ? "Caricamento…" : "Login con Google"}
 </button>
 </div>
@@ -361,7 +363,7 @@ return(
       <button className="selected">Classica</button>
       <p>4 giocatori e 4 ristoranti</p>
       <div className="startButtonWrap">
-      <button onClick={createGame} disabled={loading==="createGame"}>
+      <button onClick={()=>{ playSound("click"); createGame() }} disabled={loading==="createGame"}>
       {loading==="createGame" ? "Caricamento…" : "Avvia partita"}
       </button>
       </div>
@@ -399,7 +401,7 @@ return(
       </div>
       
       <div className="startButtonWrap">
-      <button onClick={createGame} disabled={loading==="createGame"}>
+      <button onClick={()=>{ playSound("click"); createGame() }} disabled={loading==="createGame"}>
       {loading==="createGame" ? "Caricamento…" : "Avvia partita"}
       </button>
       </div>
@@ -428,7 +430,7 @@ return(
       <p>Ristoranti: 1 (One shot)</p>
       
       <div className="startButtonWrap">
-      <button onClick={createGame} disabled={loading==="createGame"}>
+      <button onClick={()=>{ playSound("click"); createGame() }} disabled={loading==="createGame"}>
       {loading==="createGame" ? "Caricamento…" : "Avvia partita"}
       </button>
       </div>
@@ -519,7 +521,7 @@ return(
       key={idx}
       type="button"
       className="pickerOption"
-      onClick={()=>{ updatePlayerAvatar(openPicker.i,idx); setOpenPicker(null) }}
+      onClick={()=>{ playSound("click"); updatePlayerAvatar(openPicker.i,idx); setOpenPicker(null) }}
       >
       <img src={src} alt="" />
       </button>
@@ -528,7 +530,7 @@ return(
       key={idx}
       type="button"
       className="pickerOption"
-      onClick={()=>{ updateRestaurantAvatar(openPicker.i,idx); setOpenPicker(null) }}
+      onClick={()=>{ playSound("click"); updateRestaurantAvatar(openPicker.i,idx); setOpenPicker(null) }}
       >
       <img src={src} alt="" />
       </button>
@@ -540,7 +542,7 @@ return(
       
       {!isSetupValid() && <p className="hintMsg">Compila tutti i nomi per continuare.</p>}
       
-      <button onClick={startGame} disabled={loading==="startGame" || !isSetupValid()}>
+      <button onClick={()=>{ playSound("click"); startGame() }} disabled={loading==="startGame" || !isSetupValid()}>
       {loading==="startGame" ? "Caricamento…" : "Inizia votazione"}
       </button>
       
@@ -589,7 +591,7 @@ onClick={()=>selectVote(cat.key,n)}
 
 ))}
 
-<button onClick={nextRestaurant}>
+<button onClick={()=>{ playSound("next"); nextRestaurant() }}>
 Prossimo ristorante
 </button>
 
@@ -604,7 +606,7 @@ Prossimo ristorante
 
 {!reveal &&(
 
-<button onClick={()=>setReveal(true)}>
+<button onClick={()=>{ playSound("reveal"); setReveal(true) }}>
 Apri la busta
 </button>
 
