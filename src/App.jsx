@@ -38,9 +38,10 @@ const voteCategories=[
 {key:"bonus",label:"Bonus"}
 ]
 
-const PLAYER_AVATARS = ["👤","👩","👨","🧑","👴","👵","🧒","👦","👧","🧔","🧑‍🍳","🦸"]
+const PLAYER_AVATAR_FILES = ["personaggio1.png"].concat(Array.from({length:19},(_,i)=>`personaggio${i+2}.PNG`))
 const RESTAURANT_AVATAR_FILES = ["pizza.png","sushi.png","ramen.png","dumplings.png","steak.png","vegetariano.png","vegano.png","etnico.png","indiano.png","hamburger.png"]
 const BASE = (import.meta.env.BASE_URL || "/").replace(/\/?$/, "")
+const PLAYER_AVATARS = PLAYER_AVATAR_FILES.map(f=>`${BASE}/avatars/players/${f}`)
 const RESTAURANT_AVATARS = RESTAURANT_AVATAR_FILES.map(f=>`${BASE}/avatars/restaurants/${f}`)
 
 const emptyVotes={
@@ -475,7 +476,7 @@ return(
       onClick={()=>setOpenPicker({type:"player",i})}
       title="Scegli icona"
       >
-      <span className="avatarTriggerEmoji">{PLAYER_AVATARS[playerAvatars[i] ?? 0]}</span>
+      <img src={PLAYER_AVATARS[playerAvatars[i] ?? 0] ?? PLAYER_AVATARS[0]} alt="" className="avatarTriggerImg" />
       </button>
       <input
       type="text"
@@ -513,14 +514,14 @@ return(
       <h4>{openPicker.type==="player" ? "Scegli icona giocatore" : "Scegli icona ristorante"}</h4>
       <button type="button" className="pickerClose" onClick={()=>setOpenPicker(null)} aria-label="Chiudi">×</button>
       <div className="pickerGrid">
-      {openPicker.type==="player" ? PLAYER_AVATARS.map((emoji,idx)=>(
+      {openPicker.type==="player" ? PLAYER_AVATARS.map((src,idx)=>(
       <button
       key={idx}
       type="button"
       className="pickerOption"
       onClick={()=>{ updatePlayerAvatar(openPicker.i,idx); setOpenPicker(null) }}
       >
-      {emoji}
+      <img src={src} alt="" />
       </button>
       )) : RESTAURANT_AVATARS.map((src,idx)=>(
       <button
