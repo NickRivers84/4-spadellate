@@ -29,6 +29,8 @@ const [error,setError] = useState(null)
 const [myGames,setMyGames] = useState([])
 const [loadingGameId,setLoadingGameId] = useState(null)
 const [openPicker,setOpenPicker] = useState(null)
+const [soundEnabled,setSoundEnabled] = useState(true)
+const [bonusEnabled,setBonusEnabled] = useState(true)
 
 const voteCategories=[
 {key:"location",label:"Posizione"},
@@ -45,8 +47,9 @@ const PLAYER_AVATARS = PLAYER_AVATAR_FILES.map(f=>`${BASE}/avatars/players/${f}`
 const RESTAURANT_AVATARS = RESTAURANT_AVATAR_FILES.map(f=>`${BASE}/avatars/restaurants/${f}`)
 
 function playSound(name){
+if(!soundEnabled) return
 try{
-const snd = new Audio(`${BASE}/sounds/${name}.mp3`)
+const snd = new Audio(`${BASE}/sounds/${name}.wav`)
 snd.volume = 0.4
 snd.play().catch(()=>{})
 }catch(_){}
@@ -100,6 +103,7 @@ setPlayerNames(d.playerNames||[])
 setRestaurantNames(d.restaurantNames||[])
 setPlayerAvatars(d.playerAvatars||[])
 setRestaurantAvatars(d.restaurantAvatars||[])
+setBonusEnabled(d.bonusEnabled!==false)
 setVotes(d.votes||[])
 setCurrentRestaurant(d.currentRestaurant!= null ? Math.min(d.currentRestaurant, (d.restaurants||4)-1) : 0)
 setReveal(false)
@@ -229,6 +233,7 @@ playerNames,
 restaurantNames,
 playerAvatars: playerAvatars.slice(0,players),
 restaurantAvatars: restaurantAvatars.slice(0,restaurants),
+bonusEnabled,
 votes:votesInit,
 status:"vote"
 },{merge:true})
@@ -348,6 +353,10 @@ return(
       </button>
       
       </div>
+      <label className="optionRow">
+      <input type="checkbox" checked={soundEnabled} onChange={(e)=>setSoundEnabled(e.target.checked)} />
+      <span>Audio nella partita</span>
+      </label>
       <div className="homeBackWrap">
       <button type="button" className="backButton" onClick={goBack}>Indietro</button>
       </div>
@@ -540,6 +549,10 @@ return(
       </div>
       )}
       
+      <label className="optionRow">
+      <input type="checkbox" checked={bonusEnabled} onChange={(e)=>setBonusEnabled(e.target.checked)} />
+      <span>Includi categoria Bonus nella votazione</span>
+      </label>
       {!isSetupValid() && <p className="hintMsg">Compila tutti i nomi per continuare.</p>}
       
       <button onClick={()=>{ playSound("click"); startGame() }} disabled={loading==="startGame" || !isSetupValid()}>
@@ -560,7 +573,7 @@ return(
 {restaurantNames[currentRestaurant]}
 </h2>
 
-{voteCategories.map(cat=>(
+{voteCategories.filter(cat=>cat.key!=="bonus"||bonusEnabled).map(cat=>(
 
 <div key={cat.key} className="voteRow">
 
