@@ -1,0 +1,27 @@
+Icone personaggio (giocatori) – cosa fare
+==========================================
+
+1. Metti in QUESTA cartella le immagini ritagliate (una per personaggio).
+
+2. Nomi file da usare (esatti, minuscoli):
+
+   personaggio1.png
+   personaggio2.png
+   personaggio3.png
+   personaggio4.png
+   personaggio5.png
+   personaggio6.png
+   personaggio7.png
+   personaggio8.png
+   personaggio9.png
+   personaggio10.png
+   personaggio11.png
+   personaggio12.png
+
+   (Puoi usare meno file, es. solo 6: da personaggio1.png a personaggio6.png.
+    Dopo aver caricato i file, avvisa e il codice verrà aggiornato con il numero giusto.)
+
+3. Formato: PNG (o JPG, ma allora va indicato per aggiornare il codice).
+
+4. Dopo aver copiato i file qui, avvisa: il codice verrà modificato per usare
+   queste immagini al posto delle emoji nei giocatori (stesso sistema dei ristoranti).
