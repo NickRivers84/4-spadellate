@@ -1,0 +1,8 @@
+{
+  "appId": "com.forchettepolpette.app",
+  "appName": "Forchette & Polpette",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  },
+}

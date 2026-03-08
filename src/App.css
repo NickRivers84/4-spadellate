@@ -25,10 +25,18 @@
   opacity:0.9;
   }
   
+  html, body{
+  height:100%;
+  overflow:hidden;
+  }
   body{
   font-family:"Fredoka",-apple-system,BlinkMacSystemFont,sans-serif;
   overflow-x:hidden;
   background-color:var(--bg-page);
+  margin:0;
+  }
+  #root{
+  min-height:100%;
   }
   button{
   font-family:"Nunito",-apple-system,BlinkMacSystemFont,sans-serif;
@@ -103,42 +111,28 @@
   padding:12px 24px;
   }
   
-  /* BACKGROUND */
-  
-  .background{
-  position:fixed;
-  top:0;
-  left:0;
-  width:100vw;
+/* BACKGROUND sull’elemento che scorre: sfondo e contenuto si muovono insieme */
+
+  .appWrapper{
   height:100vh;
-  background-size:contain;
-  background-position:top center;
-  background-repeat:no-repeat;
-  z-index:-1;
-  transition:background-image 0.8s ease-in-out;
+  max-height:100%;
+  overflow-y:auto;
+  overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
   }
-  
-  /* Login/Home: stesso sfondo full-screen di setup/vote (fix al refresh) */
-  .bg1{
-  background-image:url("/backgrounds/bg-1.png?v=4");
-  }
-  
-  .bg2{
-  background-image:url("/backgrounds/bg-2.png");
-  }
-  
-  .bg3{
-  background-image:url("/backgrounds/bg-3.png");
-  }
-  
-  /* APP */
   
   .app{
+  position:relative;
+  z-index:1;
   min-height:100vh;
   display:flex;
   flex-direction:column;
   align-items:center;
   padding:40px 20px;
+  background-size:contain;
+  background-position:top center;
+  background-repeat:no-repeat;
+  transition:background-image 0.8s ease-in-out;
 color:#7c2d12;
   text-shadow:
   1px 1px 0 #fef3c7,
@@ -148,6 +142,15 @@ color:#7c2d12;
   0 0 4px rgba(254,243,199,0.6);
   text-align:center;
   font-family:"Fredoka",sans-serif;
+  }
+  .app.bg1{
+  background-image:url("/backgrounds/bg-1.png?v=5");
+  }
+  .app.bg2{
+  background-image:url("/backgrounds/bg-2.png?v=5");
+  }
+  .app.bg3{
+  background-image:url("/backgrounds/bg-3.png?v=5");
   }
 
   .appContent{
@@ -170,9 +173,9 @@ color:#7c2d12;
   to{ opacity:1; }
   }
   
-  /* Contenuto sotto il logo (login/home con sfondo fisso) */
+  /* Contenuto sotto il logo: margine in alto così le scritte non si sovrappongono all’icona dello sfondo */
   .homeContent{
-  margin-top:52vh;
+  margin-top:62vh;
   }
   .welcomeRow{
   display:flex;
@@ -181,6 +184,12 @@ color:#7c2d12;
   gap:12px;
   margin-bottom:16px;
   flex-wrap:wrap;
+  }
+  .homeIntro{
+  font-size:14px;
+  margin:-8px 0 12px 0;
+  opacity:0.95;
+  max-width:280px;
   }
   .avatar{
   width:48px;
@@ -211,6 +220,11 @@ color:#7c2d12;
   padding-top:16px;
   border-top:1px solid rgba(124,45,18,0.25);
   }
+  .deleteAccountWrap--top{
+  margin-top:8px;
+  padding-top:8px;
+  border-top:none;
+  }
   .deleteAccountButton{
   background:transparent !important;
   color:#7c2d12 !important;
@@ -224,6 +238,18 @@ color:#7c2d12;
   }
   .deleteAccountButton:disabled{
   opacity:0.7;
+  }
+  .privacyLink{
+  display:inline-block;
+  margin-top:8px;
+  margin-right:12px;
+  font-size:13px;
+  color:#7c2d12;
+  text-decoration:underline;
+  font-family:"Fredoka",sans-serif;
+  }
+  .privacyLink:hover{
+  color:#15803d;
   }
   /* Bottone Indietro in basso (setup, vote, result) */
   .bottomBar{
@@ -315,6 +341,12 @@ color:#7c2d12;
   font-size:1rem;
   margin:8px 0 16px 0;
   opacity:0.95;
+  }
+  .lobbyCopyLink{
+  margin-top:8px;
+  }
+  .emptyState{
+  margin:12px 0 24px 0;
   }
   .joinCodeInput{
   font-size:1.5rem;
@@ -792,7 +824,7 @@ h2{
   
   }
   
-  /* TOAST */
+  /* TOAST: testo sempre leggibile, niente ombra ereditata */
   .toast{
   position:fixed;
   bottom:24px;
@@ -803,22 +835,27 @@ h2{
   padding:14px 18px;
   border-radius:12px;
   font-size:15px;
-  font-weight:600;
+  font-weight:700;
   text-align:center;
   box-shadow:0 6px 24px rgba(0,0,0,0.2);
   z-index:2000;
   cursor:pointer;
   animation:toastIn 0.3s ease;
+  text-shadow:0 1px 2px rgba(0,0,0,0.4);
   }
   .toast--error{
   background:#c00;
   color:#fff;
-  border:2px solid rgba(255,255,255,0.9);
+  border:2px solid #000 !important;
   }
   .toast--success{
   background:#2d7a3e;
   color:#fff;
-  border:2px solid rgba(255,255,255,0.9);
+  border:2px solid #000 !important;
+  }
+  .toast--success,
+  .toast--error{
+  text-shadow:0 1px 3px rgba(0,0,0,0.5);
   }
   @keyframes toastIn{
   from{ opacity:0; transform:translateX(-50%) translateY(12px); }

@@ -85,7 +85,7 @@ setScreen("home")
 })
 },[])
 useEffect(()=>{
-if("serviceWorker"in navigator){
+if("serviceWorker"in navigator&&!window.location.hostname.includes("localhost")){
 navigator.serviceWorker.register("/sw.js").catch(()=>{})
 }
 },[])
@@ -116,7 +116,7 @@ if(openPicker && pickerCloseRef.current) pickerCloseRef.current.focus()
 useEffect(()=>{
 if(screen!=="vote"||voteMode!=="multi"||!gameId) return
 const unsub=onSnapshot(doc(db,"games",gameId),(snap)=>{
-if(!snap.exists()) return
+if(!snap.exists()){ setScreen("home"); setGameId(null); showToast("Partita chiusa dall’host."); return }
 const d=snap.data()
 setCurrentRestaurant(d.currentRestaurant??0)
 setVotes(d.votes||[])
@@ -139,7 +139,7 @@ if(code&&user&&screen==="home"&&mode===null){ setJoinInput(code.toUpperCase()); 
 useEffect(()=>{
 if(screen!=="lobby"||!gameId) return
 const unsub=onSnapshot(doc(db,"games",gameId),(snap)=>{
-if(!snap.exists()) return
+if(!snap.exists()){ setScreen("home"); setGameId(null); showToast("Partita chiusa dall’host."); return }
 const participants=snap.data().participants||{}
 setLobbyParticipantCount(Object.keys(participants).length)
 })
@@ -155,6 +155,25 @@ return ()=>{ document.title="Forchette & Polpette – 4 Spadellate" }
 
 function showToast(message,type="error"){
 setToast({ message, type })
+}
+function getUserMessage(e,context){
+if(!e) return (userMessageFallbacks[context]||"Si è verificato un errore. Riprova.")
+if(isAuthError(e)) return "Sessione scaduta. Accedi di nuovo."
+const m=(e?.message||"").toLowerCase()
+if(m.includes("network")||m.includes("failed to fetch")||m.includes("offline")||m.includes("internet")) return "Controlla la connessione a internet e riprova."
+return userMessageFallbacks[context]||"Si è verificato un errore. Riprova."
+}
+const userMessageFallbacks={
+loadGame:"Impossibile caricare la partita. Riprova.",
+deleteGame:"Impossibile eliminare la partita. Riprova.",
+login:"Impossibile accedere. Controlla la connessione e riprova.",
+deleteAccount:"Impossibile cancellare l’account. Riprova più tardi o contatta l’assistenza.",
+createGame:"Impossibile creare la partita. Riprova.",
+startMultiVote:"Impossibile avviare la votazione. Riprova.",
+startGame:"Impossibile avviare la partita. Riprova.",
+join:"Impossibile trovare la partita. Controlla il codice o chiedi all’host se è ancora aperta.",
+joinNickname:"Impossibile entrare in partita. Riprova.",
+nextRestaurant:"Impossibile salvare il voto. Riprova.",
 }
 function generateJoinCode(){
 const chars="ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -207,7 +226,7 @@ else setBg("bg2")
 setScreen(status)
 }catch(e){
 if(isAuthError(e)){ handleSessionExpired(); return }
-showToast(e?.message||"Errore caricamento partita.")
+showToast(getUserMessage(e,"loadGame"))
 }finally{
 setLoadingGameId(null)
 }
@@ -223,7 +242,7 @@ setMyGames(prev=>prev.filter(g=>g.id!==id))
 showToast("Partita eliminata.","success")
 }catch(err){
 if(isAuthError(err)){ handleSessionExpired(); return }
-showToast(err?.message||"Errore eliminazione.")
+showToast(getUserMessage(err,"deleteGame"))
 }finally{
 setDeletingGameId(null)
 }
@@ -249,7 +268,7 @@ try{
 await signInWithPopup(auth,googleProvider)
 }catch(e){
 if(isAuthError(e)){ handleSessionExpired(); return }
-showToast(e?.message||"Errore di accesso. Riprova.")
+showToast(getUserMessage(e,"login"))
 }finally{
 setLoading(null)
 }
@@ -270,7 +289,7 @@ setUser(null)
 showToast("Account e dati cancellati.","success")
 }catch(e){
 if(isAuthError(e)){ handleSessionExpired(); return }
-showToast(e?.message||"Errore. Riprova o contatta l’assistenza.")
+showToast(getUserMessage(e,"deleteAccount"))
 }finally{
 setLoading(null)
 }
@@ -298,7 +317,7 @@ setScreen("setup")
 showToast("Partita creata. Imposta i nomi.","success")
 }catch(e){
 if(isAuthError(e)){ handleSessionExpired(); return }
-showToast(e?.message||"Errore creazione partita. Riprova.")
+showToast(getUserMessage(e,"createGame"))
 }finally{
 setLoading(null)
 }
@@ -392,7 +411,7 @@ showToast("Votazione avviata.","success")
 }
 }catch(e){
 if(isAuthError(e)){ handleSessionExpired(); return }
-showToast(e?.message||"Errore avvio votazione. Riprova.")
+showToast(getUserMessage(e,"startMultiVote"))
 }finally{
 setLoading(null)
 }
@@ -405,7 +424,7 @@ setScreen("vote")
 showToast("Votazione avviata.","success")
 }catch(e){
 if(isAuthError(e)){ handleSessionExpired(); return }
-showToast(e?.message||"Errore.")
+showToast(getUserMessage(e,"startGame"))
 }finally{
 setLoading(null)
 }
@@ -418,7 +437,7 @@ setJoiningGameId("_")
 try{
 const q=query(collection(db,"games"),where("joinCode","==",code),where("status","in",["lobby","vote"]))
 const snap=await getDocs(q)
-if(snap.empty){ showToast("Partita non trovata o già terminata."); return }
+if(snap.empty){ showToast("Partita non trovata o già terminata. Controlla il codice o chiedi all’host se è ancora aperta."); return }
 const d=snap.docs[0]
 const data=d.data()
 setGameId(d.id)
@@ -443,7 +462,7 @@ setScreen("joinPickName")
 }
 }catch(e){
 if(isAuthError(e)){ handleSessionExpired(); return }
-showToast(e?.message||"Errore ricerca partita.")
+showToast(getUserMessage(e,"join"))
 }finally{
 setJoiningGameId(null)
 }
@@ -474,7 +493,7 @@ setScreen("vote")
 showToast(`Entrato come ${nick}.`,"success")
 }catch(e){
 if(isAuthError(e)){ handleSessionExpired(); return }
-showToast(e?.message||"Errore.")
+showToast(getUserMessage(e,"joinNickname"))
 }finally{
 setLoading(null)
 }
@@ -507,7 +526,7 @@ setScreen("result")
 }
 }catch(e){
 if(isAuthError(e)){ handleSessionExpired(); return }
-showToast(e?.message||"Errore salvataggio.")
+showToast(getUserMessage(e,"nextRestaurant"))
 }finally{
 setSavingNext(false)
 }
@@ -545,11 +564,8 @@ Sei offline. I dati potrebbero non essere aggiornati.
 
 <a href="#main" className="skipLink">Salta al contenuto</a>
 
-<div
-  className={`background ${bg}`}
-></div>
-
-<div className="app">
+<div className="appWrapper">
+<div className={`app ${bg}`}>
 
 <main id="main" className="appContent" aria-busy={isBusy}>
 
@@ -571,10 +587,17 @@ Sei offline. I dati potrebbero non essere aggiornati.
 <div className="homeContent">
       <div className="welcomeRow">
       {user?.photoURL && <img src={user.photoURL} alt="" className="avatar" />}
-      <h2>Benvenuto {user?.displayName}</h2>
+      <h2>Benvenuto {user?.displayName?.split(/\s+/)[0] ?? ""}</h2>
       </div>
       <h3>Modalità gioco</h3>
-      
+      <p className="homeIntro">Crea una partita, vota i ristoranti da 1 a 5 e scopri la classifica.</p>
+      <div className="homeBackWrap deleteAccountWrap deleteAccountWrap--top">
+      <button type="button" className="backButton deleteAccountButton" onClick={deleteAccount} disabled={loading==="deleteAccount"} aria-busy={loading==="deleteAccount"} aria-label="Elimina account e tutti i dati">
+      {loading==="deleteAccount" ? "Cancellazione…" : "Cancella account e dati"}
+      </button>
+      <a href="privacy.html" target="_blank" rel="noopener noreferrer" className="privacyLink">Informativa privacy</a>
+      <a href="termini.html" target="_blank" rel="noopener noreferrer" className="privacyLink">Termini di utilizzo</a>
+      </div>
       {mode===null && (
       <>
       <div className="modeButtons">
@@ -718,9 +741,12 @@ Sei offline. I dati potrebbero non essere aggiornati.
       </>
       )}
 
-      {myGames.length>0 && mode===null && (
+      {mode===null && (
       <>
       <h3 className="sectionTitle">Le tue partite</h3>
+      {myGames.length===0 ? (
+      <p className="hintMsg emptyState">Nessuna partita. Creane una dalla schermata sopra.</p>
+      ) : (
       <div className="gameList">
       {myGames.map((g)=>(
       <div key={g.id} className="gameItem">
@@ -736,14 +762,9 @@ Sei offline. I dati potrebbero non essere aggiornati.
       </div>
       ))}
       </div>
+      )}
       </>
       )}
-
-      <div className="homeBackWrap deleteAccountWrap">
-      <button type="button" className="backButton deleteAccountButton" onClick={deleteAccount} disabled={loading==="deleteAccount"} aria-busy={loading==="deleteAccount"} aria-label="Elimina account e tutti i dati">
-      {loading==="deleteAccount" ? "Cancellazione…" : "Cancella account e dati"}
-      </button>
-      </div>
 
 </div>
 
@@ -785,6 +806,9 @@ Sei offline. I dati potrebbero non essere aggiornati.
 <div className="lobbyQR">
 <QRCodeSVG value={joinUrl(joinCode)} size={200} level="M" />
 </div>
+<button type="button" className="backButton lobbyCopyLink" onClick={()=>{ const u=joinUrl(joinCode); navigator.clipboard?.writeText(u).then(()=>{ playSound("click"); showToast("Link copiato. Incollalo in un messaggio per invitare.","success") }).catch(()=>showToast("Impossibile copiare il link.")) }}>
+Copia link invito
+</button>
 <p className="hintMsg">I giocatori aprono il link nel browser (o inquadrano il QR), inseriscono il codice, fanno login Google e scrivono il proprio nickname.</p>
 <p className="lobbyCount">{lobbyParticipantCount} / {players} giocatori</p>
 <button onClick={()=>{ playSound("click"); startMultiVote() }} disabled={loading==="startMultiVote"} aria-busy={loading==="startMultiVote"} className={loading==="startMultiVote"?"btnLoading":""}>
@@ -1006,6 +1030,8 @@ return (
 )}
 
 </main>
+
+</div>
 
 </div>
 

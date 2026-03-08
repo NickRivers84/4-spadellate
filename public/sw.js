@@ -1,6 +1,6 @@
 // 4 Spadellate – Service Worker (PWA + offline)
 // Incrementa VERSION ad ogni deploy importante così l’app installata carica la nuova versione
-const VERSION = "v4";
+const VERSION = "v6";
 const CACHE_NAME = `4spadellate-${VERSION}`;
 
 self.addEventListener("install", (event) => {
