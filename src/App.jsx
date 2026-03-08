@@ -33,6 +33,7 @@ const [soundEnabled,setSoundEnabled] = useState(true)
 const [bonusEnabled,setBonusEnabled] = useState(true)
 const [savingNext,setSavingNext] = useState(false)
 const [deletingGameId,setDeletingGameId] = useState(null)
+const [isOnline,setIsOnline] = useState(typeof navigator!=="undefined"?navigator.onLine:true)
 const pickerCloseRef = useRef(null)
 
 const voteCategories=[
@@ -74,6 +75,11 @@ setScreen("home")
 }
 })
 },[])
+useEffect(()=>{
+if("serviceWorker"in navigator){
+navigator.serviceWorker.register("/sw.js").catch(()=>{})
+}
+},[])
 
 async function fetchMyGames(){
 if(!user) return
@@ -98,9 +104,27 @@ return ()=>clearTimeout(t)
 useEffect(()=>{
 if(openPicker && pickerCloseRef.current) pickerCloseRef.current.focus()
 },[openPicker])
+useEffect(()=>{
+const on=()=>setIsOnline(true)
+const off=()=>setIsOnline(false)
+window.addEventListener("online",on)
+window.addEventListener("offline",off)
+return ()=>{ window.removeEventListener("online",on); window.removeEventListener("offline",off) }
+},[])
 
 function showToast(message,type="error"){
 setToast({ message, type })
+}
+function isAuthError(e){
+const code = e?.code || ""
+return code==="permission-denied"||code==="unauthenticated"||code==="auth/network-request-failed"||(typeof e?.message==="string"&&e.message.toLowerCase().includes("auth"))
+}
+function handleSessionExpired(){
+signOut(auth).then(()=>{
+setScreen("login")
+setUser(null)
+showToast("Sessione scaduta. Accedi di nuovo.")
+})
 }
 
 async function loadGame(id){
@@ -128,6 +152,7 @@ else if(status==="vote") setBg("bg2")
 else setBg("bg2")
 setScreen(status)
 }catch(e){
+if(isAuthError(e)){ handleSessionExpired(); return }
 showToast(e?.message||"Errore caricamento partita.")
 }finally{
 setLoadingGameId(null)
@@ -143,6 +168,7 @@ await deleteDoc(doc(db,"games",id))
 setMyGames(prev=>prev.filter(g=>g.id!==id))
 showToast("Partita eliminata.","success")
 }catch(err){
+if(isAuthError(err)){ handleSessionExpired(); return }
 showToast(err?.message||"Errore eliminazione.")
 }finally{
 setDeletingGameId(null)
@@ -166,6 +192,7 @@ setLoading("login")
 try{
 await signInWithPopup(auth,googleProvider)
 }catch(e){
+if(isAuthError(e)){ handleSessionExpired(); return }
 showToast(e?.message||"Errore di accesso. Riprova.")
 }finally{
 setLoading(null)
@@ -191,6 +218,7 @@ setRestaurantAvatars([])
 setScreen("setup")
 showToast("Partita creata. Imposta i nomi.","success")
 }catch(e){
+if(isAuthError(e)){ handleSessionExpired(); return }
 showToast(e?.message||"Errore creazione partita. Riprova.")
 }finally{
 setLoading(null)
@@ -260,6 +288,7 @@ status:"vote"
 setScreen("vote")
 showToast("Votazione avviata.","success")
 }catch(e){
+if(isAuthError(e)){ handleSessionExpired(); return }
 showToast(e?.message||"Errore avvio votazione. Riprova.")
 }finally{
 setLoading(null)
@@ -286,6 +315,7 @@ setBg("bg3")
 setScreen("result")
 }
 }catch(e){
+if(isAuthError(e)){ handleSessionExpired(); return }
 showToast(e?.message||"Errore salvataggio.")
 }finally{
 setSavingNext(false)
@@ -314,6 +344,11 @@ return(
 <>
 
 {isBusy && <div className="globalLoadingBar" role="progressbar" aria-hidden="true" />}
+{!isOnline && (
+<div className="offlineBanner" role="status">
+Sei offline. I dati potrebbero non essere aggiornati.
+</div>
+)}
 
 <a href="#main" className="skipLink">Salta al contenuto</a>
 

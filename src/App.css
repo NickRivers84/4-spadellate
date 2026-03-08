@@ -51,6 +51,42 @@
   outline:2px solid #000;
   outline-offset:2px;
   }
+  .offlineBanner{
+  position:fixed;
+  top:0;
+  left:0;
+  right:0;
+  padding:10px 16px;
+  background:#d97706;
+  color:#fff;
+  text-align:center;
+  font-size:14px;
+  font-weight:600;
+  z-index:9998;
+  }
+  .errorBoundary{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px;
+  background:var(--bg-page);
+  }
+  .errorBoundaryContent{
+  text-align:center;
+  max-width:320px;
+  }
+  .errorBoundaryContent h1{
+  margin-bottom:12px;
+  font-size:1.25rem;
+  }
+  .errorBoundaryContent p{
+  margin-bottom:20px;
+  font-size:15px;
+  }
+  .errorBoundaryContent button{
+  padding:12px 24px;
+  }
   
   /* BACKGROUND */
   
