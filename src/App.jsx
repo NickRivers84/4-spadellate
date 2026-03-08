@@ -1,5 +1,5 @@
 import "./App.css"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { db, auth, googleProvider } from "./firebase"
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth"
 import { collection, addDoc, doc, setDoc, getDoc, getDocs, query, where, deleteDoc } from "firebase/firestore"
@@ -32,6 +32,8 @@ const [openPicker,setOpenPicker] = useState(null)
 const [soundEnabled,setSoundEnabled] = useState(true)
 const [bonusEnabled,setBonusEnabled] = useState(true)
 const [savingNext,setSavingNext] = useState(false)
+const [deletingGameId,setDeletingGameId] = useState(null)
+const pickerCloseRef = useRef(null)
 
 const voteCategories=[
 {key:"location",label:"Posizione"},
@@ -93,6 +95,9 @@ if(!toast) return
 const t = setTimeout(()=>setToast(null),4000)
 return ()=>clearTimeout(t)
 },[toast])
+useEffect(()=>{
+if(openPicker && pickerCloseRef.current) pickerCloseRef.current.focus()
+},[openPicker])
 
 function showToast(message,type="error"){
 setToast({ message, type })
@@ -132,12 +137,15 @@ setLoadingGameId(null)
 async function deleteGame(id,e){
 e.stopPropagation()
 if(!confirm("Eliminare questa partita?")) return
+setDeletingGameId(id)
 try{
 await deleteDoc(doc(db,"games",id))
 setMyGames(prev=>prev.filter(g=>g.id!==id))
 showToast("Partita eliminata.","success")
 }catch(err){
 showToast(err?.message||"Errore eliminazione.")
+}finally{
+setDeletingGameId(null)
 }
 }
 
@@ -299,10 +307,15 @@ return {name,total}
 }
 
 const data = ranking()
+const isBusy = loading!=null || loadingGameId!=null || savingNext || deletingGameId!=null
 
 return(
 
 <>
+
+{isBusy && <div className="globalLoadingBar" role="progressbar" aria-hidden="true" />}
+
+<a href="#main" className="skipLink">Salta al contenuto</a>
 
 <div
   className={`background ${bg}`}
@@ -310,7 +323,7 @@ return(
 
 <div className="app">
 
-<div className="appContent">
+<main id="main" className="appContent">
 
 <div key={screen} className="screenTransition">
 
@@ -374,7 +387,7 @@ return(
       <span>Audio nella partita</span>
       </label>
       <div className="homeBackWrap">
-      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
+      <button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
       </div>
       </>
       )}
@@ -383,7 +396,7 @@ return(
       {mode==="classic" && (
       <>
       <div className="homeBackWrap">
-      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
+      <button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
       </div>
       <button className="selected">Classica</button>
       <p>4 giocatori e 4 ristoranti</p>
@@ -399,7 +412,7 @@ return(
       {mode==="custom" && (
       <>
       <div className="homeBackWrap">
-      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
+      <button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
       </div>
       <button className="selected">Personalizzata</button>
       
@@ -437,7 +450,7 @@ return(
       {mode==="oneshot" && (
       <>
       <div className="homeBackWrap">
-      <button type="button" className="backButton" onClick={goBack}>Indietro</button>
+      <button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
       </div>
       <button className="selected">One shot</button>
       
@@ -473,8 +486,8 @@ return(
       <button type="button" className="smallButton" onClick={()=>loadGame(g.id)} disabled={loadingGameId!=null}>
       {loadingGameId===g.id ? "Caricamento…" : "Riprendi"}
       </button>
-      <button type="button" className="smallButton deleteButton" onClick={(e)=>deleteGame(g.id,e)}>
-      Elimina
+      <button type="button" className="smallButton deleteButton" onClick={(e)=>deleteGame(g.id,e)} disabled={deletingGameId!=null}>
+      {deletingGameId===g.id ? "Eliminazione…" : "Elimina"}
       </button>
       </div>
       </div>
@@ -501,6 +514,7 @@ return(
       className="avatarTrigger"
       onClick={()=>setOpenPicker({type:"player",i})}
       title="Scegli icona"
+      aria-label={`Scegli icona giocatore ${i+1}`}
       >
       <img src={PLAYER_AVATARS[playerAvatars[i] ?? 0] ?? PLAYER_AVATARS[0]} alt="" className="avatarTriggerImg" />
       </button>
@@ -522,6 +536,7 @@ return(
       className="avatarTrigger"
       onClick={()=>setOpenPicker({type:"restaurant",i})}
       title="Scegli icona"
+      aria-label={`Scegli icona ristorante ${i+1}`}
       >
       <img src={RESTAURANT_AVATARS[restaurantAvatars[i] ?? 0] ?? RESTAURANT_AVATARS[0]} alt="" className="avatarTriggerImg" />
       </button>
@@ -535,10 +550,10 @@ return(
       ))}
       
       {openPicker && (
-      <div className="pickerOverlay" onClick={()=>setOpenPicker(null)}>
-      <div className="pickerModal" onClick={e=>e.stopPropagation()}>
-      <h4>{openPicker.type==="player" ? "Scegli icona giocatore" : "Scegli icona ristorante"}</h4>
-      <button type="button" className="pickerClose" onClick={()=>setOpenPicker(null)} aria-label="Chiudi">×</button>
+      <div className="pickerOverlay" onClick={()=>setOpenPicker(null)} role="presentation">
+      <div className="pickerModal" onClick={e=>e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="pickerTitle">
+      <h4 id="pickerTitle">{openPicker.type==="player" ? "Scegli icona giocatore" : "Scegli icona ristorante"}</h4>
+      <button type="button" ref={pickerCloseRef} className="pickerClose" onClick={()=>setOpenPicker(null)} aria-label="Chiudi modal">×</button>
       <div className="pickerGrid">
       {openPicker.type==="player" ? PLAYER_AVATARS.map((src,idx)=>(
       <button
@@ -546,6 +561,7 @@ return(
       type="button"
       className="pickerOption"
       onClick={()=>{ playSound("click"); updatePlayerAvatar(openPicker.i,idx); setOpenPicker(null) }}
+      aria-label={`Icona giocatore ${idx+1}`}
       >
       <img src={src} alt="" />
       </button>
@@ -555,6 +571,7 @@ return(
       type="button"
       className="pickerOption"
       onClick={()=>{ playSound("click"); updateRestaurantAvatar(openPicker.i,idx); setOpenPicker(null) }}
+      aria-label={`Icona ristorante ${idx+1}`}
       >
       <img src={src} alt="" />
       </button>
@@ -675,11 +692,9 @@ return (
 
 </div>
 
-</div>
-
 {screen!=="login" && screen!=="home" && (
 <div className="bottomBar">
-<button type="button" className="backButton" onClick={goBack}>Indietro</button>
+<button type="button" className="backButton" onClick={goBack} aria-label="Torna indietro">Indietro</button>
 </div>
 )}
 
@@ -688,6 +703,8 @@ return (
 {toast.message}
 </div>
 )}
+
+</main>
 
 </div>
 
