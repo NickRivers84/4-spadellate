@@ -1,0 +1,21 @@
+Icone ristoranti – dove mettere i file
+=====================================
+
+Metti in QUESTA cartella le immagini ritagliate (una per icona).
+
+Nomi file da usare (esatti, minuscoli):
+
+  pizza.png
+  sushi.png
+  ramen.png
+  dumplings.png
+  steak.png
+  vegetariano.png
+  vegano.png
+  etnico.png
+  indiano.png
+  hamburger.png
+
+Formato consigliato: PNG o JPG. Se usi .jpg rinomina in .png qui sopra oppure avvisa per aggiornare il codice.
+
+Dopo aver copiato i file qui, l’app userà automaticamente queste icone al posto delle emoji.
