@@ -591,13 +591,6 @@ Sei offline. I dati potrebbero non essere aggiornati.
       </div>
       <h3>Modalità gioco</h3>
       <p className="homeIntro">Crea una partita, vota i ristoranti da 1 a 5 e scopri la classifica.</p>
-      <div className="homeBackWrap deleteAccountWrap deleteAccountWrap--top">
-      <button type="button" className="backButton deleteAccountButton" onClick={deleteAccount} disabled={loading==="deleteAccount"} aria-busy={loading==="deleteAccount"} aria-label="Elimina account e tutti i dati">
-      {loading==="deleteAccount" ? "Cancellazione…" : "Cancella account e dati"}
-      </button>
-      <a href="privacy.html" target="_blank" rel="noopener noreferrer" className="privacyLink">Informativa privacy</a>
-      <a href="termini.html" target="_blank" rel="noopener noreferrer" className="privacyLink">Termini di utilizzo</a>
-      </div>
       {mode===null && (
       <>
       <div className="modeButtons">
@@ -765,6 +758,14 @@ Sei offline. I dati potrebbero non essere aggiornati.
       )}
       </>
       )}
+
+      <div className="homeBackWrap deleteAccountWrap homeLegalStrip">
+      <button type="button" className="backButton deleteAccountButton" onClick={deleteAccount} disabled={loading==="deleteAccount"} aria-busy={loading==="deleteAccount"} aria-label="Elimina account e tutti i dati">
+      {loading==="deleteAccount" ? "Cancellazione…" : "Cancella account e dati"}
+      </button>
+      <a href="privacy.html" target="_blank" rel="noopener noreferrer" className="privacyLink">Informativa privacy</a>
+      <a href="termini.html" target="_blank" rel="noopener noreferrer" className="privacyLink">Termini di utilizzo</a>
+      </div>
 
 </div>
 

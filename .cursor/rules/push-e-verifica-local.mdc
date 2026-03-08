@@ -1,0 +1,25 @@
+---
+description: Quando suggerisci "fai push", fornisci sempre guida passo passo e poi verifica errori/redirect in locale
+alwaysApply: true
+---
+
+# Push e verifica locale
+
+## Quando dici "fai push"
+
+1. **Fornisci sempre una guida passo passo** all'utente, ad esempio:
+   - Aprire il terminale (o integrare in Cursor).
+   - `git status` (opzionale: verificare i file modificati).
+   - `git add .` oppure `git add <file>` per i file da includere.
+   - `git commit -m "Descrizione breve in italiano"`.
+   - `git push` (e, se richiesto, specificare branch es. `origin main`).
+   - Ricordare: dopo il deploy (es. Vercel), refresh forzato (Ctrl+F5) o "Clear site data" se la cache nasconde le modifiche.
+
+2. **Dopo aver dato la guida**, controlla eventuali **errori o redirect in locale**:
+   - Verificare che `npm run dev` (o lo script di avvio) sia in esecuzione e sulla porta corretta (es. 5173).
+   - Cercare nel progetto redirect, blocchi o configurazioni che possano impedire l’apertura della pagina in locale (es. service worker, base URL, proxy).
+   - Se ci sono file di config o entry point rilevanti, controllarli per errori o redirect anomali.
+
+## In sintesi
+
+- **"Fai push"** → sempre guida passo passo + (dopo) controllo errori/redirect in locale.
