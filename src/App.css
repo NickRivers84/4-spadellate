@@ -1549,38 +1549,101 @@ h2{
   background:var(--card-bg);
   border-radius:16px;
   padding:20px;
-  max-width:360px;
+  max-width:380px;
   width:100%;
+  max-height:min(85vh,640px);
+  display:flex;
+  flex-direction:column;
   box-shadow:var(--shadow-hover);
   border:2px solid rgba(124,45,18,0.3);
   }
   .resultDetailPanel h3{
-  margin:0 0 16px 0;
+  margin:0 0 8px 0;
   font-size:1.2rem;
   color:#5c1a0a;
+  flex-shrink:0;
   }
-  .resultDetailList{
-  list-style:none;
-  margin:0 0 16px 0;
-  padding:0;
+  .resultDetailHint{
+  margin:0 0 12px 0;
+  font-size:0.82rem;
+  line-height:1.35;
+  color:#78350f;
+  opacity:0.92;
+  font-family:"Nunito",sans-serif;
+  flex-shrink:0;
   }
-  .resultDetailList li{
+  .resultDetailScroll{
+  flex:1;
+  min-height:0;
+  overflow-y:auto;
+  margin:0 0 14px 0;
+  padding-right:4px;
+  -webkit-overflow-scrolling:touch;
+  }
+  .resultDetailCatBlock{
+  margin-bottom:14px;
+  padding-bottom:12px;
+  border-bottom:1px solid rgba(124,45,18,0.18);
+  }
+  .resultDetailCatBlock:last-child{
+  border-bottom:none;
+  margin-bottom:0;
+  padding-bottom:0;
+  }
+  .resultDetailCatRow{
   display:flex;
   justify-content:space-between;
-  align-items:center;
-  padding:10px 0;
-  border-bottom:1px solid rgba(124,45,18,0.2);
+  align-items:baseline;
+  gap:10px;
+  margin-bottom:8px;
   font-family:"Fredoka",sans-serif;
   color:#5c1a0a;
   }
-  .resultDetailList li:last-child{
-  border-bottom:none;
+  .resultDetailCatLabel{
+  font-weight:800;
+  font-size:1rem;
   }
-  .resultDetailList strong{
+  .resultDetailCatTotal{
+  flex-shrink:0;
+  font-size:0.95rem;
+  font-weight:800;
   color:#7c2d12;
+  }
+  .resultDetailSubList{
+  list-style:none;
+  margin:0;
+  padding:0 0 0 4px;
+  }
+  .resultDetailSubList li{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding:6px 8px;
+  margin:2px 0;
+  border-radius:8px;
+  background:rgba(255,255,255,0.55);
+  font-family:"Nunito",sans-serif;
+  font-size:0.88rem;
+  color:#5c1a0a;
+  }
+  .resultDetailSubName{
+  flex:1;
+  min-width:0;
+  word-break:break-word;
+  font-weight:600;
+  }
+  .resultDetailSubVal{
+  flex-shrink:0;
+  font-weight:800;
+  font-variant-numeric:tabular-nums;
+  min-width:1.5rem;
+  text-align:right;
+  color:#92400e;
   }
   .resultDetailClose{
   width:100%;
+  flex-shrink:0;
   padding:12px;
   font-size:1rem;
   font-weight:700;

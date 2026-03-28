@@ -3,6 +3,7 @@
   "appName": "Forchette & Polpette",
   "webDir": "dist",
   "server": {
+    "url": "https://4-spadellate.vercel.app",
     "androidScheme": "https"
-  },
+  }
 }

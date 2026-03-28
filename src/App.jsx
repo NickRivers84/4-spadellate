@@ -849,20 +849,37 @@ result.push({ playerIndex: p, name: (playerNames[p]||"").trim() || `Giocatore ${
 return result.sort((a,b)=>b.sameCount-a.sameCount)
 }
 
-function getVoteBreakdown(restaurantIndex){
+function getVoteBreakdownDetailed(restaurantIndex){
 const v = (votes||{})[restaurantIndex]||{}
 const categories = voteCategories.filter(cat=>cat.key!=="bonus"||bonusEnabled)
+const firstKey = Object.keys(v).sort((a,b)=>Number(a)-Number(b))[0]
+const sample = firstKey!=null ? v[firstKey] : null
+const isPerPlayer = typeof sample==="object" && sample!==null && !Array.isArray(sample)
+const usePlayerRows = isPerPlayer || (voteMode==="multi" && players>0)
 return categories.map(cat=>{
+const label = cat.key==="bonus" && (typeof bonusLabel==="string"&&bonusLabel.trim()) ? `Bonus – ${bonusLabel.trim()}` : cat.label
+const byPlayer = []
 let total = 0
-const isPerPlayer = typeof v==="object" && !Array.isArray(v) && Object.keys(v).length>0 && typeof Object.values(v)[0]==="object"
-if(isPerPlayer){
-Object.values(v).forEach((playerVotes)=>{
-if(playerVotes&&typeof playerVotes==="object") total += Number(playerVotes[cat.key]) || 0
-})
+if(usePlayerRows){
+for(let p=0;p<players;p++){
+const pv = v[String(p)]
+const pname = (playerNames[p]||"").trim() || `Giocatore ${p+1}`
+if(pv&&typeof pv==="object"){
+const val = pv[cat.key]
+const num = Number(val)
+if(!Number.isNaN(num)) total += num
+byPlayer.push({ name: pname, value: val!=null&&val!=="" ? val : null })
 }else{
-total = Number(v[cat.key]) || 0
+byPlayer.push({ name: pname, value: null })
 }
-return { key: cat.key, label: cat.key==="bonus" && (typeof bonusLabel==="string"&&bonusLabel.trim()) ? `Bonus – ${bonusLabel.trim()}` : cat.label, total }
+}
+}else{
+const val = v[cat.key]
+const num = Number(val)
+if(!Number.isNaN(num)) total += num
+byPlayer.push({ name: voteMode==="single" ? "Voti (questo dispositivo)" : "Voto", value: val!=null&&val!=="" ? val : null })
+}
+return { key: cat.key, label, total, byPlayer }
 })
 }
 
@@ -1520,16 +1537,30 @@ Anche <strong>{pals[1].name || `Giocatore ${pals[1].playerIndex+1}`}</strong> ha
 
 {resultDetailIndex!=null && (()=>{
 const name = (restaurantNames[resultDetailIndex]||"").trim() || `Ristorante ${resultDetailIndex+1}`
-const breakdown = getVoteBreakdown(resultDetailIndex)
+const breakdown = getVoteBreakdownDetailed(resultDetailIndex)
 return (
 <div className="resultDetailOverlay" role="dialog" aria-modal="true" aria-labelledby="resultDetailTitle" onClick={()=>setResultDetailIndex(null)}>
 <div className="resultDetailPanel" onClick={e=>e.stopPropagation()}>
 <h3 id="resultDetailTitle">Votazioni – {name}</h3>
-<ul className="resultDetailList">
+<p className="resultDetailHint">Totale per categoria e voto di ogni partecipante (scala 1–5).</p>
+<div className="resultDetailScroll">
 {breakdown.map(c=>(
-<li key={c.key}><span>{c.label}</span><strong>{c.total} punti</strong></li>
+<div key={c.key} className="resultDetailCatBlock">
+<div className="resultDetailCatRow">
+<span className="resultDetailCatLabel">{c.label}</span>
+<strong className="resultDetailCatTotal">{c.total} punti</strong>
+</div>
+<ul className="resultDetailSubList" aria-label={`Dettaglio ${c.label}`}>
+{c.byPlayer.map((row,i)=>(
+<li key={`${c.key}-p-${i}`}>
+<span className="resultDetailSubName">{row.name}</span>
+<span className="resultDetailSubVal" aria-label={row.value!=null?`Voto ${row.value}`:"Nessun voto"}>{row.value!=null?row.value:"—"}</span>
+</li>
 ))}
 </ul>
+</div>
+))}
+</div>
 <button type="button" className="resultDetailClose" onClick={()=>setResultDetailIndex(null)}>Chiudi</button>
 </div>
 </div>
