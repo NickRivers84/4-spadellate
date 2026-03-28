@@ -2,7 +2,7 @@ import "./App.css"
 import { useState, useEffect, useRef, useCallback } from "react"
 import { db, auth, googleProvider } from "./firebase"
 import { signInWithPopup, signOut, onAuthStateChanged, deleteUser, reauthenticateWithPopup } from "firebase/auth"
-import { collection, addDoc, doc, setDoc, getDoc, getDocs, query, where, deleteDoc, onSnapshot } from "firebase/firestore"
+import { collection, addDoc, doc, setDoc, getDoc, getDocs, query, where, deleteDoc, onSnapshot, writeBatch } from "firebase/firestore"
 import { QRCodeSVG } from "qrcode.react"
 
 function ModeDetails({
@@ -148,10 +148,23 @@ const [gameOwner,setGameOwner] = useState(null)
 const [joinNickname,setJoinNickname] = useState("")
 const [lobbyParticipantCount,setLobbyParticipantCount] = useState(0)
 const [voteSavedAt,setVoteSavedAt] = useState(null)
+const [voteSaveSyncing,setVoteSaveSyncing] = useState(false)
+const [voteSaveError,setVoteSaveError] = useState(null)
+const votesRef = useRef(votes)
 const [gameName,setGameName] = useState("")
 const [loginMessage,setLoginMessage] = useState(null)
 const pickerCloseRef = useRef(null)
 const multiSaveTimeoutRef = useRef(null)
+
+useEffect(()=>{ votesRef.current = votes },[votes])
+
+useEffect(()=>{
+if(screen!=="vote"){
+if(multiSaveTimeoutRef.current){ clearTimeout(multiSaveTimeoutRef.current); multiSaveTimeoutRef.current=null }
+setVoteSaveSyncing(false)
+setVoteSaveError(null)
+}
+},[screen])
 
 const voteCategories=[
 {key:"location",label:"Atmosfera"},
@@ -319,6 +332,46 @@ setLoginMessage("Sessione scaduta. Accedi di nuovo.")
 })
 }
 
+const flushMultiVoteSave = useCallback(async (opts = {}) => {
+const showBar = opts.showSyncing === true
+if(voteMode!=="multi"||myPlayerIndex==null||!gameId) return
+if(multiSaveTimeoutRef.current){
+clearTimeout(multiSaveTimeoutRef.current)
+multiSaveTimeoutRef.current=null
+}
+if(showBar) setVoteSaveSyncing(true)
+try{
+await setDoc(doc(db,"games",gameId),{ votes:votesRef.current },{merge:true})
+setVoteSaveSyncing(false)
+setVoteSaveError(null)
+setVoteSavedAt(Date.now())
+}catch(e){
+setVoteSaveSyncing(false)
+if(isAuthError(e)){ handleSessionExpired(); throw e }
+setVoteSaveError(getUserMessage(e,"nextRestaurant"))
+throw e
+}
+// getUserMessage è definito nello stesso render; includerlo instabilizza il callback
+// eslint-disable-next-line react-hooks/exhaustive-deps -- vedi sopra
+},[voteMode,myPlayerIndex,gameId])
+
+useEffect(()=>{
+const flushIfHidden=()=>{
+if(voteMode!=="multi"||myPlayerIndex==null||!gameId) return
+if(document.visibilityState==="hidden") void flushMultiVoteSave({ showSyncing:false })
+}
+const onPageHide=()=>{
+if(voteMode!=="multi"||myPlayerIndex==null||!gameId) return
+void flushMultiVoteSave({ showSyncing:false })
+}
+document.addEventListener("visibilitychange",flushIfHidden)
+window.addEventListener("pagehide",onPageHide)
+return ()=>{
+document.removeEventListener("visibilitychange",flushIfHidden)
+window.removeEventListener("pagehide",onPageHide)
+}
+},[voteMode,myPlayerIndex,gameId,flushMultiVoteSave])
+
 async function loadGame(id){
 setToast(null)
 setLoadingGameId(id)
@@ -362,6 +415,11 @@ e.stopPropagation()
 if(!confirm("Eliminare questa partita?")) return
 setDeletingGameId(id)
 try{
+const gSnap=await getDoc(doc(db,"games",id))
+const jc=(gSnap.exists()&&gSnap.data().joinCode)?String(gSnap.data().joinCode):""
+if(jc){
+try{ await deleteDoc(doc(db,"joinCodes",jc)) }catch{ void 0 }
+}
 await deleteDoc(doc(db,"games",id))
 setMyGames(prev=>prev.filter(g=>g.id!==id))
 showToast("Partita eliminata.","success")
@@ -407,7 +465,13 @@ setLoading("deleteAccount")
 try{
 const q=query(collection(db,"games"),where("owner","==",user.uid))
 const snap=await getDocs(q)
-await Promise.all(snap.docs.map(d=>deleteDoc(doc(db,"games",d.id))))
+for(const d of snap.docs){
+const jc=d.data()?.joinCode?String(d.data().joinCode):""
+if(jc){
+try{ await deleteDoc(doc(db,"joinCodes",jc)) }catch{ void 0 }
+}
+await deleteDoc(doc(db,"games",d.id))
+}
 await reauthenticateWithPopup(auth.currentUser,googleProvider)
 await deleteUser(auth.currentUser)
 setScreen("login")
@@ -505,7 +569,9 @@ try{
 if(voteMode==="multi"){
 const code=generateJoinCode()
 const votesMultiInit=Array.from({length:restaurants},()=>({}))
-await setDoc(doc(db,"games",gameId),{
+const gameRef=doc(db,"games",gameId)
+const batch=writeBatch(db)
+batch.set(gameRef,{
 playerNames,
 restaurantNames,
 playerAvatars: playerAvatars.slice(0,players),
@@ -520,6 +586,8 @@ participants:{},
 status:"lobby",
 currentRestaurant:0
 },{merge:true})
+batch.set(doc(db,"joinCodes",code),{ gameId },{merge:false})
+await batch.commit()
 setVotes(votesMultiInit)
 setCurrentRestaurant(0)
 setJoinCode(code)
@@ -574,12 +642,29 @@ if(!code||code.length!==6){ showToast("Inserisci un codice di 6 caratteri."); re
 setToast(null)
 setJoiningGameId("_")
 try{
-const q=query(collection(db,"games"),where("joinCode","==",code),where("status","in",["lobby","vote"]))
-const snap=await getDocs(q)
-if(snap.empty){ showToast("Partita non trovata o già terminata. Controlla il codice o chiedi all’host se è ancora aperta."); return }
-const d=snap.docs[0]
-const data=d.data()
-setGameId(d.id)
+const jcSnap=await getDoc(doc(db,"joinCodes",code))
+if(!jcSnap.exists()){
+showToast("Partita non trovata o codice non valido. Chiedi all’host di aver avviato la lobby dopo l’ultimo aggiornamento dell’app.")
+return
+}
+const gid=jcSnap.data()?.gameId
+if(!gid||typeof gid!=="string"){
+showToast("Dati del codice partita non validi. Riprova o chiedi un nuovo codice.")
+return
+}
+const snap=await getDoc(doc(db,"games",gid))
+if(!snap.exists()){
+showToast("Partita non trovata o già terminata.")
+return
+}
+const data=snap.data()
+const st=data.status
+const vm=data.voteMode
+if(vm!=="multi"||(st!=="lobby"&&st!=="vote")){
+showToast("Partita non trovata o già terminata. Controlla il codice o chiedi all’host se è ancora aperta.")
+return
+}
+setGameId(gid)
 setGameOwner(data.owner||null)
 setPlayers(data.players||4)
 setRestaurants(data.restaurants||4)
@@ -643,11 +728,14 @@ function selectVote(category,value){
 playSound("click")
 if(voteMode==="multi"&&myPlayerIndex!=null){
 const updated=votes.map((v,i)=>i===currentRestaurant?{...v,[String(myPlayerIndex)]:{...(v[String(myPlayerIndex)]||{}),[category]:value}}:v)
+votesRef.current=updated
 setVotes(updated)
+setVoteSaveError(null)
 if(multiSaveTimeoutRef.current) clearTimeout(multiSaveTimeoutRef.current)
 multiSaveTimeoutRef.current=setTimeout(()=>{
-setDoc(doc(db,"games",gameId),{ votes:updated },{merge:true}).then(()=>setVoteSavedAt(Date.now())).catch(()=>{})
-},250)
+multiSaveTimeoutRef.current=null
+void flushMultiVoteSave({ showSyncing:false })
+},350)
 return
 }
 if(voteMode==="single"){
@@ -707,7 +795,10 @@ async function savePartita(){
 if(!gameId) return
 setSavingPartita(true)
 try{
-const payload = voteMode==="single" ? { votes, currentRestaurant, currentPlayerTurn } : { votes, currentRestaurant }
+if(voteMode==="multi"&&myPlayerIndex!=null){
+await flushMultiVoteSave({ showSyncing:true })
+}
+const payload = voteMode==="single" ? { votes, currentRestaurant, currentPlayerTurn } : { votes: votesRef.current, currentRestaurant }
 await setDoc(doc(db,"games",gameId), payload,{merge:true})
 showToast("Partita salvata.","success")
 }catch(e){
@@ -1218,7 +1309,18 @@ return (
 {voteMode==="multi" && myPlayerIndex!=null && user?.uid!==gameOwner && (
 <p className="hintMsg">Se perdi la connessione riapri lo stesso link: tornerai alla tua scheda di voto.</p>
 )}
-{voteSavedAt && <p className="voteSavedFeedback" role="status">Salvato ✓</p>}
+{voteMode==="multi" && myPlayerIndex!=null && user?.uid!==gameOwner && voteSaveSyncing && (
+<p className="voteSaveStatus voteSaveStatus--syncing" role="status">Salvataggio in corso…</p>
+)}
+{voteMode==="multi" && myPlayerIndex!=null && user?.uid!==gameOwner && voteSaveError && (
+<div className="voteSaveStatus voteSaveStatus--errWrap" role="alert">
+<p className="voteSaveStatus--error">{voteSaveError}</p>
+<button type="button" className="voteRetryBtn" onClick={()=>{ void flushMultiVoteSave({ showSyncing:true }) }}>Riprova salvataggio</button>
+</div>
+)}
+{voteSavedAt && !voteSaveError && !voteSaveSyncing && (
+<p className="voteSavedFeedback" role="status">Salvato ✓</p>
+)}
 {voteCategories.filter(cat=>cat.key!=="bonus"||bonusEnabled).map(cat=>{
 const myVotes=voteMode==="multi"&&myPlayerIndex!=null ? (votes[currentRestaurant]||{})[String(myPlayerIndex)]||{} : voteMode==="single" ? (votes[currentRestaurant]||{})[String(currentPlayerTurn)]||{} : votes[currentRestaurant]||{}
 const sel=voteMode==="multi" ? myVotes[cat.key] : voteMode==="single" ? myVotes[cat.key] : votes[currentRestaurant]?.[cat.key]
@@ -1292,20 +1394,13 @@ if(!r||!r.name) return RESTAURANT_AVATARS[0]
 const origIndex = names.indexOf(r.name)
 return RESTAURANT_AVATARS[avatars[origIndex] ?? 0] ?? RESTAURANT_AVATARS[0]
 }
-const numCardOnlySteps = Math.max(0, data.length - 3)
-const cardsOnly = resultRevealStep >= 1 && resultRevealStep <= numCardOnlySteps
-const showCardsFromEnd = cardsOnly || (data.length < 3 && resultRevealStep >= 1)
-const showPodium = data.length >= 3 && resultRevealStep >= data.length - 2
-const podiumFilledStep = showPodium ? resultRevealStep - (data.length - 2) : 0
-const cards4thToLast = data.slice(3)
+const n = data.length
+if(n<3){
 return (
-<>
-{/* Fase 1: solo card dall'ultima alla quarta (o tutte se 1–2 ristoranti) */}
-{showCardsFromEnd && (
 <div className="resultRevealList resultRevealListFromBottom">
-{data.slice(data.length - resultRevealStep).slice().reverse().map((r,i)=>{
+{data.slice(n-resultRevealStep).slice().reverse().map((r,i)=>{
 const idx = data.indexOf(r)
-const rank = idx >= 0 ? idx + 1 : (data.length - resultRevealStep + i + 1)
+const rank = idx >= 0 ? idx + 1 : (n - resultRevealStep + i + 1)
 const iconSrc = getIcon(r)
 const origIndex = names.indexOf(r.name)
 return (
@@ -1319,61 +1414,86 @@ return (
 )
 })}
 </div>
-)}
-{/* Fase 2: podio (vuoto poi 3° → 2° → 1°) + card 4° in giù */}
-{showPodium && (
+)
+}
+const restCount = n - 3
+const restItems = restCount > 0 ? data.slice(n - Math.min(resultRevealStep, restCount)) : []
+const showPodium = resultRevealStep >= n - 2
+const podiumFilledStep = showPodium ? Math.min(3, Math.max(0, resultRevealStep - (n - 3))) : 0
+return (
 <>
-<div className="resultPodium" role="img" aria-label="Podio classifica">
-<div className="podiumStep podiumSecond" role="button" tabIndex={podiumFilledStep>=2?0:-1} onClick={()=>{ const o=names.indexOf(data[1]?.name); if(o>=0) setResultDetailIndex(o) }} onKeyDown={e=>{ if((e.key==="Enter"||e.key===" ")&&podiumFilledStep>=2){ e.preventDefault(); const o=names.indexOf(data[1]?.name); if(o>=0) setResultDetailIndex(o) } }} aria-label={podiumFilledStep>=2?`Vedi votazioni per ${data[1]?.name}`:undefined}>
+{showPodium && (
+<div className="resultPodiumWrap">
+<h3 className="resultPodiumTitle">Podio</h3>
+<div className="resultPodium" role="group" aria-label="Primi tre classificati">
+<div className="podiumStep podiumSecond" role="button" tabIndex={podiumFilledStep>=2?0:-1} onClick={()=>{ const o=names.indexOf(data[1]?.name); if(o>=0) setResultDetailIndex(o) }} onKeyDown={e=>{ if((e.key==="Enter"||e.key===" ")&&podiumFilledStep>=2){ e.preventDefault(); const o=names.indexOf(data[1]?.name); if(o>=0) setResultDetailIndex(o) } }} aria-label={podiumFilledStep>=2?`Secondo posto, ${data[1]?.name}`:"Secondo posto"}>
+<div className="podiumStepInner">
 {podiumFilledStep >= 2 && data[1] ? (
 <>
-<span className="podiumMedal">🥈</span>
+<span className="podiumMedal" aria-hidden="true">🥈</span>
 <img src={getIcon(data[1])} alt="" className="podiumIcon" />
 <span className="podiumName">{data[1].name}</span>
 <span className="podiumPoints">{data[1].total} punti</span>
 </>
-) : <span className="podiumEmpty">2°</span>}
+) : (
+<span className="podiumEmpty">?</span>
+)}
 </div>
-<div className="podiumStep podiumFirst" role="button" tabIndex={podiumFilledStep>=3?0:-1} onClick={()=>{ const o=names.indexOf(data[0]?.name); if(o>=0) setResultDetailIndex(o) }} onKeyDown={e=>{ if((e.key==="Enter"||e.key===" ")&&podiumFilledStep>=3){ e.preventDefault(); const o=names.indexOf(data[0]?.name); if(o>=0) setResultDetailIndex(o) } }} aria-label={podiumFilledStep>=3?`Vedi votazioni per ${data[0]?.name}`:undefined}>
+<div className="podiumPedestal podiumPedestal--second" aria-hidden="true"><span className="podiumPlaceNum">2</span></div>
+</div>
+<div className="podiumStep podiumFirst" role="button" tabIndex={podiumFilledStep>=3?0:-1} onClick={()=>{ const o=names.indexOf(data[0]?.name); if(o>=0) setResultDetailIndex(o) }} onKeyDown={e=>{ if((e.key==="Enter"||e.key===" ")&&podiumFilledStep>=3){ e.preventDefault(); const o=names.indexOf(data[0]?.name); if(o>=0) setResultDetailIndex(o) } }} aria-label={podiumFilledStep>=3?`Primo posto, ${data[0]?.name}`:"Primo posto"}>
+<div className="podiumStepInner">
 {podiumFilledStep >= 3 && data[0] ? (
 <>
-<span className="podiumMedal">🥇</span>
-<img src={getIcon(data[0])} alt="" className="podiumIcon" />
+<span className="podiumMedal" aria-hidden="true">🥇</span>
+<img src={getIcon(data[0])} alt="" className="podiumIcon podiumIcon--first" />
 <span className="podiumName">{data[0].name}</span>
 <span className="podiumPoints">{data[0].total} punti</span>
 </>
-) : <span className="podiumEmpty">1°</span>}
+) : (
+<span className="podiumEmpty">?</span>
+)}
 </div>
-<div className="podiumStep podiumThird" role="button" tabIndex={podiumFilledStep>=1?0:-1} onClick={()=>{ const o=names.indexOf(data[2]?.name); if(o>=0) setResultDetailIndex(o) }} onKeyDown={e=>{ if((e.key==="Enter"||e.key===" ")&&podiumFilledStep>=1){ e.preventDefault(); const o=names.indexOf(data[2]?.name); if(o>=0) setResultDetailIndex(o) } }} aria-label={podiumFilledStep>=1?`Vedi votazioni per ${data[2]?.name}`:undefined}>
+<div className="podiumPedestal podiumPedestal--first" aria-hidden="true"><span className="podiumPlaceNum">1</span></div>
+</div>
+<div className="podiumStep podiumThird" role="button" tabIndex={podiumFilledStep>=1?0:-1} onClick={()=>{ const o=names.indexOf(data[2]?.name); if(o>=0) setResultDetailIndex(o) }} onKeyDown={e=>{ if((e.key==="Enter"||e.key===" ")&&podiumFilledStep>=1){ e.preventDefault(); const o=names.indexOf(data[2]?.name); if(o>=0) setResultDetailIndex(o) } }} aria-label={podiumFilledStep>=1?`Terzo posto, ${data[2]?.name}`:"Terzo posto"}>
+<div className="podiumStepInner">
 {podiumFilledStep >= 1 && data[2] ? (
 <>
-<span className="podiumMedal">🥉</span>
+<span className="podiumMedal" aria-hidden="true">🥉</span>
 <img src={getIcon(data[2])} alt="" className="podiumIcon" />
 <span className="podiumName">{data[2].name}</span>
 <span className="podiumPoints">{data[2].total} punti</span>
 </>
-) : <span className="podiumEmpty">3°</span>}
+) : (
+<span className="podiumEmpty">?</span>
+)}
+</div>
+<div className="podiumPedestal podiumPedestal--third" aria-hidden="true"><span className="podiumPlaceNum">3</span></div>
 </div>
 </div>
-{cards4thToLast.length > 0 && (
-<div className="resultRevealList">
-{cards4thToLast.map((r,i)=>{
-const rank = 4 + i
+</div>
+)}
+{restCount > 0 && restItems.length > 0 && (
+<div className="resultBelowPodium">
+<h3 className="resultBelowPodiumTitle">{showPodium ? "Altri classificati" : "Classifica"}</h3>
+<ul className="resultRestList" aria-label="Posizioni dalla quarta in giù">
+{restItems.map((r)=>{
+const idx = data.indexOf(r)
+const rank = idx + 1
 const iconSrc = getIcon(r)
 const origIndex = names.indexOf(r.name)
 return (
-<div key={i} className="resultBlock resultRevealCard resultBlockClickable" role="button" tabIndex={0} onClick={()=>origIndex>=0&&setResultDetailIndex(origIndex)} onKeyDown={e=>{ if(e.key==="Enter"||e.key===" ") { e.preventDefault(); origIndex>=0&&setResultDetailIndex(origIndex) } }} aria-label={`Vedi votazioni per ${r.name}`}>
-<h3>
-<img src={iconSrc} alt="" className="resultIconImg" />
-#{rank} {r.name}
-</h3>
-<p>{r.total} punti</p>
-</div>
+<li key={`rest-${idx}`} className="resultRestRow resultBlockClickable" role="button" tabIndex={0} onClick={()=>origIndex>=0&&setResultDetailIndex(origIndex)} onKeyDown={e=>{ if(e.key==="Enter"||e.key===" ") { e.preventDefault(); origIndex>=0&&setResultDetailIndex(origIndex) } }} aria-label={`${rank}° posto, ${r.name}, ${r.total} punti. Vedi votazioni`}>
+<span className="resultRestRank">{rank}°</span>
+<img src={iconSrc} alt="" className="resultRestAvatar" />
+<span className="resultRestName">{r.name}</span>
+<span className="resultRestPoints">{r.total} <span className="resultRestPtsLabel">pt</span></span>
+</li>
 )
 })}
+</ul>
 </div>
-)}
-</>
 )}
 </>
 )
