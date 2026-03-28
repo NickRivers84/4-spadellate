@@ -3,7 +3,7 @@
 const VERSION = "v6";
 const CACHE_NAME = `4spadellate-${VERSION}`;
 
-self.addEventListener("install", (event) => {
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
