@@ -1644,14 +1644,29 @@ h2{
   .resultDetailClose{
   width:100%;
   flex-shrink:0;
-  padding:12px;
-  font-size:1rem;
-  font-weight:700;
+  margin:0;
+  padding:12px 16px;
+  font-size:1.05rem;
+  font-weight:800;
+  font-family:"Nunito",sans-serif;
   border-radius:10px;
-  border:2px solid rgba(124,45,18,0.4);
-  background:rgba(254,243,199,0.9);
-  color:#5c1a0a;
+  border:2px solid #78350f;
+  background:#fef3c7;
+  color:#431407 !important;
+  text-shadow:none !important;
+  box-shadow:none;
   cursor:pointer;
+  transition:background 0.15s ease, filter 0.15s ease;
+  }
+  .resultDetailClose:hover{
+  background:#fde68a;
+  color:#1c1917 !important;
+  transform:none;
+  box-shadow:none;
+  }
+  .resultDetailClose:active{
+  filter:brightness(0.97);
+  transform:scale(0.99);
   }
 
   /* TOAST: testo sempre leggibile, niente ombra ereditata */
